@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "ManagerProfile": {
+      "title": "ManagerProfile",
+      "description": "Perfil do tecnico autenticado e preferencias globais de sincronizacao.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID do usuario." },
+        "managerName": { "type": "string", "description": "Nome do treinador exibido no jogo." },
+        "autoSyncEnabled": { "type": "boolean", "description": "Se atualizacoes automaticas de elenco na temporada estao ativas." },
+        "preferredSimSpeed": { "type": "integer", "description": "Velocidade padrao da simulacao (1, 2 ou 4)." },
+        "totalTitles": { "type": "integer", "description": "Total de titulos conquistados em todas as carreiras." },
+        "totalWins": { "type": "integer", "description": "Total de vitorias acumuladas." },
+        "lastSquadSyncAt": { "type": "integer", "description": "Epoch millis da ultima sincronizacao com a API de elencos." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp de criacao." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp da ultima atualizacao." }
+      },
+      "required": ["userId", "managerName", "autoSyncEnabled", "preferredSimSpeed", "totalTitles", "totalWins", "createdAt", "updatedAt"]
+    },
+    "CareerSave": {
+      "title": "CareerSave",
+      "description": "Slot de carreira salvo de um clube no campeonato brasileiro.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID do proprietario." },
+        "clubId": { "type": "string", "description": "Identificador do clube gerenciado." },
+        "clubName": { "type": "string", "description": "Nome do clube gerenciado." },
+        "division": { "type": "string", "enum": ["SERIE_A", "SERIE_B"], "description": "Divisao atual do clube." },
+        "seasonYear": { "type": "integer", "description": "Ano da temporada atual." },
+        "currentRound": { "type": "integer", "description": "Rodada atual (1..38)." },
+        "budget": { "type": "integer", "description": "Saldo em caixa do clube em reais." },
+        "stadiumCapacity": { "type": "integer", "description": "Capacidade atual do estadio." },
+        "ticketPriceLevel": { "type": "string", "enum": ["POPULAR", "NORMAL", "CARO"], "description": "Faixa de preco do ingresso." },
+        "trainingFocus": { "type": "string", "enum": ["EQUILIBRADO", "ATAQUE", "DEFESA", "FISICO", "BASE"], "description": "Foco semanal de treinamento." },
+        "formation": { "type": "string", "description": "Esquema tatico atual (ex: 4-4-2)." },
+        "mentality": { "type": "string", "enum": ["DEFENSIVO", "EQUILIBRADO", "OFENSIVO", "CONTRA_ATAQUE"], "description": "Postura tatica da equipe." },
+        "marking": { "type": "string", "enum": ["ZONAL", "PRESSAO", "INDIVIDUAL"], "description": "Estilo de marcacao." },
+        "boardConfidence": { "type": "integer", "description": "Confianca da diretoria (0..100)." },
+        "points": { "type": "integer", "description": "Pontos na tabela do campeonato." },
+        "leaguePosition": { "type": "integer", "description": "Posicao atual na classificacao (1..20)." },
+        "wins": { "type": "integer", "description": "Vitorias na temporada." },
+        "draws": { "type": "integer", "description": "Empates na temporada." },
+        "losses": { "type": "integer", "description": "Derrotas na temporada." },
+        "goalsFor": { "type": "integer", "description": "Gols marcados." },
+        "goalsAgainst": { "type": "integer", "description": "Gols sofridos." },
+        "copaStage": { "type": "string", "description": "Fase atual na Copa do Brasil." },
+        "activeStarterIds": { "type": "array", "description": "Lista limitada (max 11) dos IDs dos titulares." },
+        "status": { "type": "string", "enum": ["active", "retired"], "description": "Estado da carreira." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp de criacao." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp da ultima atualizacao." }
+      },
+      "required": [
+        "userId", "clubId", "clubName", "division", "seasonYear", "currentRound",
+        "budget", "stadiumCapacity", "ticketPriceLevel", "trainingFocus", "formation",
+        "mentality", "marking", "boardConfidence", "points", "leaguePosition",
+        "wins", "draws", "losses", "goalsFor", "goalsAgainst", "copaStage",
+        "activeStarterIds", "status", "createdAt", "updatedAt"
+      ]
+    },
+    "TransferRecord": {
+      "title": "TransferRecord",
+      "description": "Registro historico de transferencia ou atualizacao automatica de elenco na carreira.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID do usuario." },
+        "careerId": { "type": "string", "description": "ID da carreira vinculada." },
+        "playerName": { "type": "string", "description": "Nome do jogador movimentado." },
+        "position": { "type": "string", "description": "Posicao do jogador (GOL, ZAG, LAT, MEI, ATA)." },
+        "fromClubName": { "type": "string", "description": "Clube de origem ou Livre." },
+        "toClubName": { "type": "string", "description": "Clube de destino." },
+        "fee": { "type": "integer", "description": "Valor da negociacao em reais." },
+        "transferType": { "type": "string", "enum": ["BUY", "SELL", "LOAN", "FREE", "AUTO_SYNC"], "description": "Tipo da movimentacao." },
+        "seasonYear": { "type": "integer", "description": "Temporada do evento." },
+        "roundNumber": { "type": "integer", "description": "Rodada em que ocorreu." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp de criacao." }
+      },
+      "required": ["userId", "careerId", "playerName", "position", "fromClubName", "toClubName", "fee", "transferType", "seasonYear", "roundNumber", "createdAt"]
+    },
+    "TrophyRecord": {
+      "title": "TrophyRecord",
+      "description": "Titulo ou conquista registrada na galeria do treinador.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID do usuario." },
+        "careerId": { "type": "string", "description": "ID da carreira vinculada." },
+        "competitionName": { "type": "string", "description": "Nome da competicao." },
+        "clubName": { "type": "string", "description": "Clube campeao." },
+        "seasonYear": { "type": "integer", "description": "Ano da conquista." },
+        "finalPosition": { "type": "integer", "description": "Colocacao final." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "ServerTimestamp de criacao." }
+      },
+      "required": ["userId", "careerId", "competitionName", "clubName", "seasonYear", "finalPosition", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/ManagerProfile" },
+      "description": "Perfil e configuracoes do treinador autenticado."
+    },
+    "/users/{userId}/careers/{careerId}": {
+      "schema": { "$ref": "#/entities/CareerSave" },
+      "description": "Carreiras salvas do treinador no Campeonato Brasileiro."
+    },
+    "/users/{userId}/careers/{careerId}/transfers/{transferId}": {
+      "schema": { "$ref": "#/entities/TransferRecord" },
+      "description": "Historico de transferencias e atualizacoes automaticas de elenco."
+    },
+    "/users/{userId}/careers/{careerId}/trophies/{trophyId}": {
+      "schema": { "$ref": "#/entities/TrophyRecord" },
+      "description": "Galeria de trofeus conquistados na carreira."
+    }
+  }
+}

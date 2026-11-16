@@ -1,0 +1,6 @@
+{
+  "name": "BrasManager",
+  "description": "Jogo de gerenciamento de futebol estilo Brasfoot com times atualizados do Campeonato Brasileiro (Série A e B), mercado de transferências, táticas, finanças, simulação ao vivo e sincronização automática de elencos durante a temporada.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

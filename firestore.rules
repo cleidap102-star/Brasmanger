@@ -1,0 +1,189 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validators ---
+    function isValidManagerProfile(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.managerName is string && data.managerName.size() >= 2 && data.managerName.size() <= 60 &&
+             data.autoSyncEnabled is bool &&
+             data.preferredSimSpeed is int && data.preferredSimSpeed in [1, 2, 4] &&
+             data.totalTitles is int && data.totalTitles >= 0 && data.totalTitles <= 10000 &&
+             data.totalWins is int && data.totalWins >= 0 && data.totalWins <= 100000 &&
+             (!('lastSquadSyncAt' in data) || (data.lastSquadSyncAt is int && data.lastSquadSyncAt >= 0)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidCareerSave(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.clubId is string && data.clubId.size() >= 1 && data.clubId.size() <= 64 &&
+             data.clubName is string && data.clubName.size() >= 2 && data.clubName.size() <= 64 &&
+             data.division in ['SERIE_A', 'SERIE_B'] &&
+             data.seasonYear is int && data.seasonYear >= 2024 && data.seasonYear <= 2150 &&
+             data.currentRound is int && data.currentRound >= 1 && data.currentRound <= 39 &&
+             data.budget is int && data.budget >= -500000000 && data.budget <= 10000000000 &&
+             data.stadiumCapacity is int && data.stadiumCapacity >= 1000 && data.stadiumCapacity <= 200000 &&
+             data.ticketPriceLevel in ['POPULAR', 'NORMAL', 'CARO'] &&
+             data.trainingFocus in ['EQUILIBRADO', 'ATAQUE', 'DEFESA', 'FISICO', 'BASE'] &&
+             data.formation is string && data.formation.size() >= 3 && data.formation.size() <= 16 &&
+             data.mentality in ['DEFENSIVO', 'EQUILIBRADO', 'OFENSIVO', 'CONTRA_ATAQUE'] &&
+             data.marking in ['ZONAL', 'PRESSAO', 'INDIVIDUAL'] &&
+             data.boardConfidence is int && data.boardConfidence >= 0 && data.boardConfidence <= 100 &&
+             data.points is int && data.points >= 0 && data.points <= 200 &&
+             data.leaguePosition is int && data.leaguePosition >= 1 && data.leaguePosition <= 20 &&
+             data.wins is int && data.wins >= 0 && data.wins <= 50 &&
+             data.draws is int && data.draws >= 0 && data.draws <= 50 &&
+             data.losses is int && data.losses >= 0 && data.losses <= 50 &&
+             data.goalsFor is int && data.goalsFor >= 0 && data.goalsFor <= 500 &&
+             data.goalsAgainst is int && data.goalsAgainst >= 0 && data.goalsAgainst <= 500 &&
+             data.copaStage is string && data.copaStage.size() >= 1 && data.copaStage.size() <= 48 &&
+             data.activeStarterIds is list && data.activeStarterIds.size() <= 11 &&
+             (data.activeStarterIds.size() == 0 || (data.activeStarterIds[0] is string && data.activeStarterIds[0].size() <= 64)) &&
+             data.status in ['active', 'retired'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidTransferRecord(data, careerId) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.careerId is string && data.careerId == careerId &&
+             data.playerName is string && data.playerName.size() >= 2 && data.playerName.size() <= 80 &&
+             data.position in ['GOL', 'LAT', 'ZAG', 'MEI', 'ATA'] &&
+             data.fromClubName is string && data.fromClubName.size() >= 2 && data.fromClubName.size() <= 64 &&
+             data.toClubName is string && data.toClubName.size() >= 2 && data.toClubName.size() <= 64 &&
+             data.fee is int && data.fee >= 0 && data.fee <= 2000000000 &&
+             data.transferType in ['BUY', 'SELL', 'LOAN', 'FREE', 'AUTO_SYNC'] &&
+             data.seasonYear is int && data.seasonYear >= 2024 && data.seasonYear <= 2150 &&
+             data.roundNumber is int && data.roundNumber >= 0 && data.roundNumber <= 40 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidTrophyRecord(data, careerId) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.careerId is string && data.careerId == careerId &&
+             data.competitionName is string && data.competitionName.size() >= 2 && data.competitionName.size() <= 80 &&
+             data.clubName is string && data.clubName.size() >= 2 && data.clubName.size() <= 64 &&
+             data.seasonYear is int && data.seasonYear >= 2024 && data.seasonYear <= 2150 &&
+             data.finalPosition is int && data.finalPosition >= 1 && data.finalPosition <= 20 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) && isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'managerName', 'autoSyncEnabled', 'preferredSimSpeed', 'totalTitles', 'totalWins', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'managerName', 'autoSyncEnabled', 'preferredSimSpeed', 'totalTitles', 'totalWins', 'lastSquadSyncAt', 'createdAt', 'updatedAt']) &&
+                       isValidManagerProfile(incoming());
+
+      allow update: if isOwner(userId) && isValidId(userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidManagerProfile(incoming()) && (
+                         // Action: Update manager settings or stats
+                         incoming().diff(existing()).affectedKeys().hasOnly(['managerName', 'autoSyncEnabled', 'preferredSimSpeed', 'totalTitles', 'totalWins', 'lastSquadSyncAt', 'updatedAt'])
+                       );
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      match /careers/{careerId} {
+        allow get: if isOwner(userId) && isValidId(careerId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(careerId) &&
+                         incoming().status == 'active' &&
+                         incoming().keys().hasAll([
+                           'userId', 'clubId', 'clubName', 'division', 'seasonYear', 'currentRound',
+                           'budget', 'stadiumCapacity', 'ticketPriceLevel', 'trainingFocus', 'formation',
+                           'mentality', 'marking', 'boardConfidence', 'points', 'leaguePosition',
+                           'wins', 'draws', 'losses', 'goalsFor', 'goalsAgainst', 'copaStage',
+                           'activeStarterIds', 'status', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'clubId', 'clubName', 'division', 'seasonYear', 'currentRound',
+                           'budget', 'stadiumCapacity', 'ticketPriceLevel', 'trainingFocus', 'formation',
+                           'mentality', 'marking', 'boardConfidence', 'points', 'leaguePosition',
+                           'wins', 'draws', 'losses', 'goalsFor', 'goalsAgainst', 'copaStage',
+                           'activeStarterIds', 'status', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidCareerSave(incoming());
+
+        allow update: if isOwner(userId) && isValidId(careerId) &&
+                         existing().status != 'retired' &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidCareerSave(incoming()) && (
+                           // Action: Progress round / tactics / finances / new season
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'clubId', 'clubName', 'division', 'seasonYear', 'currentRound',
+                             'budget', 'stadiumCapacity', 'ticketPriceLevel', 'trainingFocus', 'formation',
+                             'mentality', 'marking', 'boardConfidence', 'points', 'leaguePosition',
+                             'wins', 'draws', 'losses', 'goalsFor', 'goalsAgainst', 'copaStage',
+                             'activeStarterIds', 'updatedAt'
+                           ]) ||
+                           // Action: Retire career (terminal state lock)
+                           (incoming().status == 'retired' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(careerId);
+
+        match /transfers/{transferId} {
+          allow get: if isOwner(userId) && isValidId(careerId) && isValidId(transferId);
+          allow list: if isOwner(userId) && isValidId(careerId);
+
+          allow create: if isOwner(userId) && isValidId(careerId) && isValidId(transferId) &&
+                           exists(/databases/$(database)/documents/users/$(userId)/careers/$(careerId)) &&
+                           incoming().keys().hasAll(['userId', 'careerId', 'playerName', 'position', 'fromClubName', 'toClubName', 'fee', 'transferType', 'seasonYear', 'roundNumber', 'createdAt']) &&
+                           incoming().keys().hasOnly(['userId', 'careerId', 'playerName', 'position', 'fromClubName', 'toClubName', 'fee', 'transferType', 'seasonYear', 'roundNumber', 'createdAt']) &&
+                           isValidTransferRecord(incoming(), careerId);
+
+          allow update: if false;
+          allow delete: if isOwner(userId) && isValidId(careerId) && isValidId(transferId);
+        }
+
+        match /trophies/{trophyId} {
+          allow get: if isOwner(userId) && isValidId(careerId) && isValidId(trophyId);
+          allow list: if isOwner(userId) && isValidId(careerId);
+
+          allow create: if isOwner(userId) && isValidId(careerId) && isValidId(trophyId) &&
+                           exists(/databases/$(database)/documents/users/$(userId)/careers/$(careerId)) &&
+                           incoming().keys().hasAll(['userId', 'careerId', 'competitionName', 'clubName', 'seasonYear', 'finalPosition', 'createdAt']) &&
+                           incoming().keys().hasOnly(['userId', 'careerId', 'competitionName', 'clubName', 'seasonYear', 'finalPosition', 'createdAt']) &&
+                           isValidTrophyRecord(incoming(), careerId);
+
+          allow update: if false;
+          allow delete: if isOwner(userId) && isValidId(careerId) && isValidId(trophyId);
+        }
+      }
+    }
+  }
+}
