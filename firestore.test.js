@@ -158,4 +158,26 @@ test("Invalid activeStarterIds (>11) or invalid enum is rejected", async () => {
   await assertFails(
     aliceDb.collection("users").doc(ALICE_UID).collection("careers").doc("bad_1").set(badCareer)
   );
+
+  const invalidDivCareer = validCareer(ALICE_UID);
+  invalidDivCareer.division = "SERIE_Z";
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).collection("careers").doc("bad_div").set(invalidDivCareer)
+  );
+
+  const serieCCareer = validCareer(ALICE_UID);
+  serieCCareer.clubId = "nautico";
+  serieCCareer.clubName = "Náutico";
+  serieCCareer.division = "SERIE_C";
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).collection("careers").doc("ok_c").set(serieCCareer)
+  );
+
+  const plCareer = validCareer(ALICE_UID);
+  plCareer.clubId = "arsenal";
+  plCareer.clubName = "Arsenal";
+  plCareer.division = "PREMIER_LEAGUE";
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).collection("careers").doc("ok_pl").set(plCareer)
+  );
 });

@@ -17,15 +17,17 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -37,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,20 +69,30 @@ fun CareerHubScreen(
     onStartNewCareer: (String) -> Unit,
     onDeleteCareer: (String) -> Unit,
     onSyncNow: () -> Unit,
-    onSignOut: () -> Unit
+    onUpdateManagerName: (String) -> Unit = {}
 ) {
     var selectedDivision by remember { mutableStateOf(Division.SERIE_A) }
     var searchQuery by remember { mutableStateOf("") }
+    var showEditNameDialog by remember { mutableStateOf(false) }
+    var editedName by remember(uiState.profile?.managerName) {
+        mutableStateOf(uiState.profile?.managerName ?: "Técnico Brasileiro")
+    }
+
+    val clubCountsByDivision = remember(uiState.clubs) {
+        uiState.clubs.groupingBy { it.division }.eachCount()
+    }
 
     val filteredClubs = remember(uiState.clubs, selectedDivision, searchQuery) {
-        uiState.clubs
-            .filter { it.division == selectedDivision }
-            .filter {
-                searchQuery.isBlank() ||
-                    it.name.contains(searchQuery, ignoreCase = true) ||
-                    it.shortName.contains(searchQuery, ignoreCase = true)
+        val base = if (searchQuery.isBlank()) {
+            uiState.clubs.filter { it.division == selectedDivision }
+        } else {
+            uiState.clubs.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                    it.shortName.contains(searchQuery, ignoreCase = true) ||
+                    it.division.shortLabel.contains(searchQuery, ignoreCase = true)
             }
-            .sortedByDescending { it.averageOverall }
+        }
+        base.sortedByDescending { it.averageOverall }
     }
 
     Box(
@@ -108,11 +121,32 @@ fun CareerHubScreen(
                             style = MaterialTheme.typography.headlineLarge,
                             color = BrazilGold500
                         )
-                        Text(
-                            text = "Olá, ${uiState.profile?.managerName ?: "Técnico"} • ${uiState.profile?.totalTitles ?: 0} títulos",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Olá, ${uiState.profile?.managerName ?: "Técnico"} • ${uiState.profile?.totalTitles ?: 0} títulos",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            IconButton(
+                                onClick = {
+                                    editedName = uiState.profile?.managerName ?: "Técnico Brasileiro"
+                                    showEditNameDialog = true
+                                },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .testTag("edit_manager_name_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Editar nome do técnico",
+                                    tint = BrazilGold500,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                     }
                     IconButton(
                         onClick = onSyncNow,
@@ -124,23 +158,13 @@ fun CareerHubScreen(
                             tint = PitchGreen500
                         )
                     }
-                    IconButton(
-                        onClick = onSignOut,
-                        modifier = Modifier.testTag("sign_out_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Logout,
-                            contentDescription = "Sair da conta",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
             }
 
             if (uiState.savedCareers.isNotEmpty()) {
                 item {
                     Text(
-                        text = "CARREIRAS SALVAS NA NUVEM",
+                        text = "CARREIRAS SALVAS",
                         style = MaterialTheme.typography.labelMedium,
                         color = PitchGreen500,
                         modifier = Modifier.padding(top = 4.dp)
@@ -176,8 +200,9 @@ fun CareerHubScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                val savedDiv = Division.fromCode(career.division)
                                 Text(
-                                    text = "${if (career.division == "SERIE_A") "Série A" else "Série B"} • Temp. ${career.seasonYear} • Rodada ${career.currentRound}/38",
+                                    text = "${savedDiv.shortLabel} • Temp. ${career.seasonYear} • Rodada ${career.currentRound}/${savedDiv.totalRounds}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -214,32 +239,29 @@ fun CareerHubScreen(
                     color = BrazilGold500
                 )
                 Text(
-                    text = "Escolha qualquer clube das Séries A ou B do Campeonato Brasileiro 2026:",
+                    text = "Escolha qualquer clube das ${Division.entries.size} ligas disponíveis (Brasil e Mundo):",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = selectedDivision == Division.SERIE_A,
-                        onClick = { selectedDivision = Division.SERIE_A },
-                        label = { Text("Série A (20)") },
-                        modifier = Modifier.testTag("filter_serie_a")
-                    )
-                    FilterChip(
-                        selected = selectedDivision == Division.SERIE_B,
-                        onClick = { selectedDivision = Division.SERIE_B },
-                        label = { Text("Série B (20)") },
-                        modifier = Modifier.testTag("filter_serie_b")
-                    )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(Division.entries) { div ->
+                        val count = clubCountsByDivision[div] ?: 0
+                        FilterChip(
+                            selected = selectedDivision == div,
+                            onClick = { selectedDivision = div },
+                            label = { Text("${div.shortLabel} ($count)") },
+                            modifier = Modifier.testTag("filter_${div.code.lowercase()}")
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Buscar clube...") },
+                    placeholder = { Text("Buscar clube em todas as ligas...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
@@ -256,6 +278,40 @@ fun CareerHubScreen(
 
             item { Spacer(modifier = Modifier.height(32.dp)) }
         }
+    }
+
+    if (showEditNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditNameDialog = false },
+            title = { Text("Nome do Técnico") },
+            text = {
+                OutlinedTextField(
+                    value = editedName,
+                    onValueChange = { if (it.length <= 40) editedName = it },
+                    label = { Text("Seu nome na beira do campo") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("manager_name_input")
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onUpdateManagerName(editedName)
+                        showEditNameDialog = false
+                    },
+                    modifier = Modifier.testTag("save_manager_name_button")
+                ) {
+                    Text("Salvar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditNameDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
 
@@ -308,7 +364,7 @@ private fun ClubSelectionRow(
                     }
                 }
                 Text(
-                    text = "${club.stadiumName} • Caixa ${formatCurrency(club.budget)}",
+                    text = "${club.division.shortLabel} • ${club.stadiumName} • ${formatCurrency(club.budget)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

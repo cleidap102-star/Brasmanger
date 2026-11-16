@@ -45,7 +45,7 @@ service cloud.firestore {
       return data.userId is string && data.userId == request.auth.uid &&
              data.clubId is string && data.clubId.size() >= 1 && data.clubId.size() <= 64 &&
              data.clubName is string && data.clubName.size() >= 2 && data.clubName.size() <= 64 &&
-             data.division in ['SERIE_A', 'SERIE_B'] &&
+             data.division in ['SERIE_A', 'SERIE_B', 'SERIE_C', 'SERIE_D', 'PREMIER_LEAGUE', 'LA_LIGA', 'SERIE_A_ITA', 'BUNDESLIGA', 'LIGUE_1', 'LIGA_ARGENTINA'] &&
              data.seasonYear is int && data.seasonYear >= 2024 && data.seasonYear <= 2150 &&
              data.currentRound is int && data.currentRound >= 1 && data.currentRound <= 39 &&
              data.budget is int && data.budget >= -500000000 && data.budget <= 10000000000 &&

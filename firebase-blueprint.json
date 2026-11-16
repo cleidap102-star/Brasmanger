@@ -25,7 +25,7 @@
         "userId": { "type": "string", "description": "Firebase Auth UID do proprietario." },
         "clubId": { "type": "string", "description": "Identificador do clube gerenciado." },
         "clubName": { "type": "string", "description": "Nome do clube gerenciado." },
-        "division": { "type": "string", "enum": ["SERIE_A", "SERIE_B"], "description": "Divisao atual do clube." },
+        "division": { "type": "string", "enum": ["SERIE_A", "SERIE_B", "SERIE_C", "SERIE_D", "PREMIER_LEAGUE", "LA_LIGA", "SERIE_A_ITA", "BUNDESLIGA", "LIGUE_1", "LIGA_ARGENTINA"], "description": "Divisao ou liga atual do clube." },
         "seasonYear": { "type": "integer", "description": "Ano da temporada atual." },
         "currentRound": { "type": "integer", "description": "Rodada atual (1..38)." },
         "budget": { "type": "integer", "description": "Saldo em caixa do clube em reais." },

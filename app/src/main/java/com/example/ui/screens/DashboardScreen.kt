@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AddBusiness
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -30,6 +31,9 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stadium
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WorkOutline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,7 +59,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.domain.model.CupMatchTie
 import com.example.domain.model.IncomingTransferOffer
+import com.example.domain.model.ManagerJobOffer
 import com.example.domain.model.TicketPriceLevel
 import com.example.domain.model.TrainingFocus
 import com.example.ui.components.ClubBadge
@@ -70,6 +77,7 @@ import com.example.ui.viewmodel.BrasManagerUiState
 fun DashboardScreen(
     uiState: BrasManagerUiState,
     onPlayRound: () -> Unit,
+    onPlayCupMatch: (CupMatchTie) -> Unit = {},
     onStartNextSeason: () -> Unit,
     onTicketPriceChange: (TicketPriceLevel) -> Unit,
     onTrainingChange: (TrainingFocus) -> Unit,
@@ -77,10 +85,14 @@ fun DashboardScreen(
     onTakeLoan: () -> Unit,
     onAcceptOffer: (IncomingTransferOffer) -> Unit,
     onRejectOffer: (IncomingTransferOffer) -> Unit,
+    onAcceptJobOffer: (ManagerJobOffer) -> Unit = {},
+    onTakeEmergencyRehire: () -> Unit = {},
+    onOpenFinances: () -> Unit,
     onExitCareer: () -> Unit
 ) {
     val career = uiState.activeCareer ?: return
     val club = uiState.userClub ?: return
+    val totalRounds = club.division.totalRounds
     val nextFixture = uiState.nextUserFixture
     val opponent = nextFixture?.let { f ->
         val oppId = if (f.homeClubId == club.id) f.awayClubId else f.homeClubId
@@ -205,7 +217,60 @@ fun DashboardScreen(
                             ) {
                                 MetricPill("CAIXA", formatCurrency(club.budget), BrazilGold500)
                                 MetricPill("FORÇA", "${club.averageOverall} OVR", PitchGreen500)
-                                MetricPill("RODADA", "${career.currentRound.coerceAtMost(38)}/38", Color.White)
+                                MetricPill("RODADA", "${career.currentRound.coerceAtMost(totalRounds.toLong())}/$totalRounds", Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Pending Knockout Cup Match Card
+            val pendingCup = uiState.pendingCupTie
+            if (pendingCup != null) {
+                item {
+                    val cupHome = uiState.clubs.firstOrNull { it.id == pendingCup.homeClubId }
+                    val cupAway = uiState.clubs.firstOrNull { it.id == pendingCup.awayClubId }
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("pending_cup_card")
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.EmojiEvents, contentDescription = null, tint = BrazilGold500, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "${pendingCup.cupType.title.uppercase()} • ${pendingCup.stageLabel.uppercase()}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = BrazilGold500,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            if (cupHome != null && cupAway != null) {
+                                Text(
+                                    text = "${cupHome.name} x ${cupAway.name} (Jogo único — pênaltis em caso de empate)",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = { onPlayCupMatch(pendingCup) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = PitchGreen500,
+                                    contentColor = PitchEmerald950
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("play_cup_match_button")
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("JOGAR MATA-MATA DA COPA", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -214,7 +279,7 @@ fun DashboardScreen(
 
             // Season Finished Banner OR Next Match CTA
             item {
-                if (career.currentRound > 38L) {
+                if (career.currentRound > totalRounds.toLong()) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                         shape = RoundedCornerShape(18.dp),
@@ -231,6 +296,26 @@ fun DashboardScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.padding(vertical = 6.dp)
                             )
+                            uiState.seasonAwards?.let { awards ->
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp)
+                                        .testTag("season_awards_card")
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("PREMIAÇÕES DA TEMPORADA", style = MaterialTheme.typography.labelMedium, color = BrazilGold500)
+                                        Text("🏆 Campeão: ${awards.championClubName}", style = MaterialTheme.typography.bodyMedium)
+                                        Text("⚽ Artilheiro: ${awards.goldenBootName} (${awards.goldenBootClub}) • ${awards.goldenBootGoals} gols", style = MaterialTheme.typography.bodySmall)
+                                        Text("🎯 Rei das Assistências: ${awards.playmakerName} (${awards.playmakerClub}) • ${awards.playmakerAssists} assist.", style = MaterialTheme.typography.bodySmall)
+                                        Text("⭐ Craque da Liga: ${awards.bestPlayerName} (${awards.bestPlayerClub})", style = MaterialTheme.typography.bodySmall)
+                                        Text("👔 Melhor Técnico: ${awards.managerOfTheYear}", style = MaterialTheme.typography.bodySmall)
+                                        Text("💰 Premiação final: +${formatCurrency(awards.prizeMoney)}", style = MaterialTheme.typography.labelMedium, color = PitchGreen500)
+                                    }
+                                }
+                            }
                             Button(
                                 onClick = onStartNextSeason,
                                 colors = ButtonDefaults.buttonColors(
@@ -411,6 +496,53 @@ fun DashboardScreen(
                 }
             }
 
+            // Managerial Job Offers
+            if (uiState.jobOffers.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "CONVITES DE OUTROS CLUBES",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PitchGreen500
+                    )
+                }
+                items(uiState.jobOffers.size) { index ->
+                    val job = uiState.jobOffers[index]
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("job_offer_${job.clubId}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.WorkOutline, contentDescription = null, tint = BrazilGold500, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${job.clubName} (${job.division.shortLabel})",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = "${job.reason} • Caixa ${formatCurrency(job.budget)} • OVR ${job.avgOverall}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Button(
+                                onClick = { onAcceptJobOffer(job) },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrazilGold500, contentColor = PitchEmerald950),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("Assumir", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Training Focus
             item {
                 Card(
@@ -462,6 +594,14 @@ fun DashboardScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        uiState.activeSponsor?.let { sponsor ->
+                            Text(
+                                text = "Patrocínio Máster: ${sponsor.name} (+${formatCurrency(sponsor.perRoundBase)}/rod)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = PitchGreen500,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text("Preço do Ingresso", style = MaterialTheme.typography.labelLarge)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -493,6 +633,23 @@ fun DashboardScreen(
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Empréstimo 10M")
                             }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = onOpenFinances,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PitchGreen500,
+                                contentColor = PitchEmerald950
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("open_finances_button")
+                        ) {
+                            Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Ver Finanças & Tendência Mensal", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -534,7 +691,7 @@ fun DashboardScreen(
                         Column(modifier = Modifier.padding(14.dp)) {
                             if (uiState.trophies.isEmpty()) {
                                 Text(
-                                    text = "Conquiste a Série A ou Série B para eternizar sua primeira taça na nuvem!",
+                                    text = "Conquiste qualquer campeonato para eternizar sua primeira taça na sala de troféus!",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -555,6 +712,31 @@ fun DashboardScreen(
 
             item { Spacer(modifier = Modifier.height(16.dp)) }
         }
+    }
+
+    if (uiState.isSacked) {
+        AlertDialog(
+            onDismissRequest = {},
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = AlertRed) },
+            title = { Text("Demissão Confirmada!") },
+            text = {
+                Text("A confiança da diretoria do ${club.name} chegou ao limite após a sequência recente de resultados. Você pode assumir outro clube para continuar sua trajetória!")
+            },
+            confirmButton = {
+                Button(
+                    onClick = onTakeEmergencyRehire,
+                    colors = ButtonDefaults.buttonColors(containerColor = BrazilGold500, contentColor = PitchEmerald950),
+                    modifier = Modifier.testTag("rehire_other_club_button")
+                ) {
+                    Text("Assumir Novo Clube", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onExitCareer) {
+                    Text("Voltar às Carreiras")
+                }
+            }
+        )
     }
 }
 

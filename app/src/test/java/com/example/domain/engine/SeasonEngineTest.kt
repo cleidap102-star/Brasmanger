@@ -1,5 +1,6 @@
 package com.example.domain.engine
 
+import com.example.data.seed.LeagueCatalog
 import com.example.data.seed.SerieASeedData
 import com.example.data.seed.SerieBSeedData
 import com.example.domain.model.Division
@@ -15,22 +16,29 @@ import org.junit.Test
 class SeasonEngineTest {
 
     @Test
-    fun generateLeagueFixtures_serieA_produces38RoundsAnd380Matches() {
-        val clubs = SerieASeedData.clubs()
-        assertEquals(20, clubs.size)
+    fun leagueCatalog_containsAll10DivisionsWithUniqueClubIdsAndValidSchedules() {
+        val allClubs = LeagueCatalog.allClubs()
+        assertEquals(196, allClubs.size)
+        assertEquals(196, allClubs.map { it.id }.toSet().size)
 
-        val fixtures = SeasonEngine.generateLeagueFixtures(clubs, Division.SERIE_A)
-        assertEquals(380, fixtures.size)
-        for (round in 1..38) {
-            val roundFixtures = fixtures.filter { it.round == round }
-            assertEquals("Round $round should have 10 matches", 10, roundFixtures.size)
-            val playingIds = roundFixtures.flatMap { listOf(it.homeClubId, it.awayClubId) }.toSet()
-            assertEquals("All 20 clubs play in round $round", 20, playingIds.size)
+        Division.entries.forEach { division ->
+            val divClubs = allClubs.filter { it.division == division }
+            val fixtures = SeasonEngine.generateLeagueFixtures(allClubs, division)
+            val expectedMatchesPerRound = divClubs.size / 2
+            assertEquals(
+                "Division ${division.code} should have ${division.totalRounds * expectedMatchesPerRound} matches",
+                division.totalRounds * expectedMatchesPerRound,
+                fixtures.size
+            )
+            for (round in 1..division.totalRounds) {
+                val roundFixtures = fixtures.filter { it.round == round }
+                assertEquals(expectedMatchesPerRound, roundFixtures.size)
+            }
         }
     }
 
     @Test
-    fun simulateMatchAndAdvanceRound_updatesTableAndPromotesTop4() {
+    fun simulateMatchAndAdvanceRound_updatesTableAcrossAllLeagues() {
         val clubs = (SerieASeedData.clubs() + SerieBSeedData.clubs()).map { club ->
             club.copy(players = SeasonEngine.autoSelectBestLineup(club.players, Formation.F_4_3_3))
         }
@@ -71,5 +79,31 @@ class SeasonEngineTest {
         )
         assertTrue(updatedFixtures.filter { it.round == 1 }.all { it.played })
         assertTrue(updatedClubs.first { it.id == "flamengo" }.played == 1)
+    }
+
+    @Test
+    fun advanceToNextSeason_cascadesPromotionAndRelegationAcrossBrazilPyramid() {
+        val allClubs = LeagueCatalog.allClubs().mapIndexed { index, club ->
+            club.copy(points = 100 - (index % 20) * 3, wins = 20 - (index % 20))
+        }
+        val nextSeason = SeasonEngine.advanceToNextSeason(allClubs)
+
+        val serieATop4B = SeasonEngine.sortStandings(allClubs, Division.SERIE_B).take(4).map { it.id }
+        val serieBBottom4A = SeasonEngine.sortStandings(allClubs, Division.SERIE_A).takeLast(4).map { it.id }
+        val serieBTop4C = SeasonEngine.sortStandings(allClubs, Division.SERIE_C).take(4).map { it.id }
+        val serieCBottom4D = SeasonEngine.sortStandings(allClubs, Division.SERIE_D).take(4).map { it.id }
+
+        serieATop4B.forEach { id ->
+            assertEquals(Division.SERIE_A, nextSeason.first { it.id == id }.division)
+        }
+        serieBBottom4A.forEach { id ->
+            assertEquals(Division.SERIE_B, nextSeason.first { it.id == id }.division)
+        }
+        serieBTop4C.forEach { id ->
+            assertEquals(Division.SERIE_B, nextSeason.first { it.id == id }.division)
+        }
+        serieCBottom4D.forEach { id ->
+            assertEquals(Division.SERIE_C, nextSeason.first { it.id == id }.division)
+        }
     }
 }

@@ -225,9 +225,11 @@ fun MarketSyncScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "${club.name} • ${player.age} anos • Valor ${formatCurrency(player.marketValue)}",
+                                            text = "${club.name} (${club.division.shortLabel}) • ${player.age} anos • ${formatCurrency(player.marketValue)}",
                                             style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                     Button(
@@ -262,7 +264,7 @@ fun MarketSyncScreen(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text("Atualização Automática na Temporada", style = MaterialTheme.typography.titleMedium)
                                         Text(
-                                            text = "Sincroniza contratações reais e elencos via API da ESPN Brasil automaticamente ao abrir a carreira e nas janelas de transferência.",
+                                            text = "Sincroniza contratações reais e elencos do Brasileirão e das ligas internacionais via API da ESPN ao abrir a carreira e nas janelas.",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

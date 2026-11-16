@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +27,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -36,6 +41,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -45,6 +51,8 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -53,8 +61,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +74,7 @@ import com.example.domain.model.LiveMatchState
 import com.example.domain.model.MatchEventType
 import com.example.domain.model.Mentality
 import com.example.ui.components.ClubBadge
+import com.example.ui.components.MatchSoundEffects
 import com.example.ui.components.formatCurrency
 import com.example.ui.theme.AlertRed
 import com.example.ui.theme.BrazilGold500
@@ -81,7 +93,8 @@ fun LiveMatchScreen(
     onSetMentality: (Mentality) -> Unit,
     onMakeSub: (String, String) -> Unit,
     onSkipToFullTime: () -> Unit,
-    onFinishRound: () -> Unit
+    onFinishRound: () -> Unit,
+    onToggleSound: () -> Unit = {}
 ) {
     BackHandler(enabled = !liveMatch.isFinished) {
         onTogglePause()
@@ -90,6 +103,23 @@ fun LiveMatchScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var showSubDialog by remember { mutableStateOf(false) }
     val userClub = uiState.userClub
+
+    val latestEvent = liveMatch.events.firstOrNull()
+    LaunchedEffect(latestEvent?.minute, latestEvent?.type, latestEvent?.description, uiState.soundEnabled) {
+        if (!uiState.soundEnabled || latestEvent == null) return@LaunchedEffect
+        when (latestEvent.type) {
+            MatchEventType.GOAL -> MatchSoundEffects.playGoal()
+            MatchEventType.KICKOFF, MatchEventType.HALFTIME, MatchEventType.FULLTIME -> MatchSoundEffects.playWhistle()
+            MatchEventType.YELLOW_CARD, MatchEventType.RED_CARD -> MatchSoundEffects.playCard()
+            else -> Unit
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            MatchSoundEffects.release()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -127,21 +157,45 @@ fun LiveMatchScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val compTitle = if (liveMatch.isKnockout && liveMatch.cupStageLabel != null) {
+                            "${liveMatch.competition.label} • ${liveMatch.cupStageLabel}"
+                        } else {
+                            "${liveMatch.competition.label} • Rodada ${liveMatch.round}"
+                        }
                         Text(
-                            text = "${liveMatch.competition.label} • Rodada ${liveMatch.round}",
+                            text = compTitle,
                             style = MaterialTheme.typography.labelSmall,
-                            color = BrazilGold500
+                            color = BrazilGold500,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
-                        Surface(
-                            color = if (liveMatch.isFinished) BrazilGold500 else PitchGreen500.copy(alpha = 0.22f),
-                            shape = RoundedCornerShape(50)
-                        ) {
-                            Text(
-                                text = "${liveMatch.minute}' • ${liveMatch.phase}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (liveMatch.isFinished) PitchEmerald950 else PitchGreen500,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = onToggleSound,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .testTag("toggle_match_sound_button")
+                            ) {
+                                Icon(
+                                    imageVector = if (uiState.soundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                                    contentDescription = if (uiState.soundEnabled) "Silenciar efeitos" else "Ativar efeitos sonoros",
+                                    tint = if (uiState.soundEnabled) BrazilGold500 else Color.White.copy(alpha = 0.55f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                color = if (liveMatch.isFinished) BrazilGold500 else PitchGreen500.copy(alpha = 0.22f),
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text(
+                                    text = "${liveMatch.minute}' • ${liveMatch.phase}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (liveMatch.isFinished) PitchEmerald950 else PitchGreen500,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
 
@@ -205,6 +259,14 @@ fun LiveMatchScreen(
                             .clip(RoundedCornerShape(3.dp))
                     )
                     Spacer(modifier = Modifier.height(8.dp))
+                    LivePitchMomentumRadar(
+                        ballZone = liveMatch.ballZone,
+                        homeColor = Color(liveMatch.userMatch.homeColor),
+                        awayColor = Color(liveMatch.userMatch.awayColor),
+                        homeShort = liveMatch.userMatch.homeShort,
+                        awayShort = liveMatch.userMatch.awayShort
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "Posse ${liveMatch.possessionHome}%-${100 - liveMatch.possessionHome}% • Chutes ${liveMatch.shotsHome}-${liveMatch.shotsAway} • Público ${liveMatch.attendance} • Renda ${formatCurrency(liveMatch.ticketRevenue)}",
                         style = MaterialTheme.typography.labelSmall,
@@ -277,6 +339,24 @@ fun LiveMatchScreen(
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                        liveMatch.penaltyShootout?.let { shootout ->
+                            Surface(
+                                color = BrazilGold500.copy(alpha = 0.20f),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp)
+                                    .testTag("penalty_shootout_banner")
+                            ) {
+                                Text(
+                                    text = "⚽ ${shootout.summary}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = BrazilGold500,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = "Craque do Jogo: ${liveMatch.manOfTheMatch ?: "Equipe"}",
                             style = MaterialTheme.typography.titleMedium,
@@ -295,7 +375,10 @@ fun LiveMatchScreen(
                                 .height(50.dp)
                                 .testTag("finish_round_button")
                         ) {
-                            Text("Avançar Rodada & Atualizar Tabela", fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (liveMatch.isKnockout) "Confirmar Classificação & Prêmio" else "Avançar Rodada & Atualizar Tabela",
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -430,3 +513,66 @@ fun LiveMatchScreen(
         )
     }
 }
+
+@Composable
+private fun LivePitchMomentumRadar(
+    ballZone: Float,
+    homeColor: Color,
+    awayColor: Color,
+    homeShort: String,
+    awayShort: String
+) {
+    val animatedBall by animateFloatAsState(
+        targetValue = ballZone.coerceIn(0.05f, 0.95f),
+        animationSpec = tween(durationMillis = 280),
+        label = "ballZoneRadar"
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF0C3B24))
+                .testTag("live_pitch_radar")
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                val lineColor = Color.White.copy(alpha = 0.28f)
+                val stroke = 1.4.dp.toPx()
+
+                // Pitch border & halfway line
+                drawRect(color = lineColor, style = Stroke(width = stroke))
+                drawLine(color = lineColor, start = Offset(w / 2f, 0f), end = Offset(w / 2f, h), strokeWidth = stroke)
+                drawCircle(color = lineColor, radius = h * 0.34f, center = Offset(w / 2f, h / 2f), style = Stroke(width = stroke))
+
+                // Penalty boxes
+                val boxW = w * 0.13f
+                val boxH = h * 0.64f
+                val boxTop = (h - boxH) / 2f
+                drawRect(color = lineColor, topLeft = Offset(0f, boxTop), size = Size(boxW, boxH), style = Stroke(width = stroke))
+                drawRect(color = lineColor, topLeft = Offset(w - boxW, boxTop), size = Size(boxW, boxH), style = Stroke(width = stroke))
+
+                // Ball position glow + sphere
+                val bx = w * animatedBall
+                val by = h * 0.5f
+                val zoneColor = if (animatedBall >= 0.5f) homeColor else awayColor
+                drawCircle(color = zoneColor.copy(alpha = 0.42f), radius = 14.dp.toPx(), center = Offset(bx, by))
+                drawCircle(color = BrazilGold500, radius = 6.dp.toPx(), center = Offset(bx, by))
+                drawCircle(color = Color.White, radius = 2.5.dp.toPx(), center = Offset(bx, by))
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(homeShort, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
+                Text(awayShort, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
+            }
+        }
+    }
+}
+

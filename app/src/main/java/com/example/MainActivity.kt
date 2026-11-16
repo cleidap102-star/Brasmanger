@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Leaderboard
+import androidx.compose.material.icons.outlined.Newspaper
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,19 +30,12 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.credentials.CredentialManager
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -50,30 +45,27 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.R
-import com.example.data.firebase.CareerFirestoreRepository
 import com.example.data.local.BrasManagerDatabase
+import com.example.data.local.LocalCareerRepository
 import com.example.data.remote.EspnSoccerApi
 import com.example.data.remote.SquadSyncRepository
-import com.example.ui.auth.SignInScreen
-import com.example.ui.auth.signOutManager
 import com.example.ui.screens.CareerHubScreen
 import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.FinancesScreen
 import com.example.ui.screens.LiveMatchScreen
 import com.example.ui.screens.MarketSyncScreen
+import com.example.ui.screens.NewsFeedScreen
 import com.example.ui.screens.SquadTacticsScreen
 import com.example.ui.screens.TableCalendarScreen
 import com.example.ui.theme.BrasManagerTheme
 import com.example.ui.viewmodel.BrasManagerViewModel
-import com.google.firebase.Firebase
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.auth
-import com.google.firebase.firestore.FirebaseFirestore
 
 const val ROUTE_DASHBOARD = "dashboard"
 const val ROUTE_SQUAD = "squad"
 const val ROUTE_TABLE = "table"
+const val ROUTE_NEWS = "news"
 const val ROUTE_MARKET = "market"
+const val ROUTE_FINANCES = "finances"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,57 +81,21 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun BrasManagerRoot() {
-    var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
-
-    DisposableEffect(Unit) {
-        val listener = FirebaseAuth.AuthStateListener { auth ->
-            currentUser = auth.currentUser
-        }
-        Firebase.auth.addAuthStateListener(listener)
-        onDispose {
-            Firebase.auth.removeAuthStateListener(listener)
-        }
-    }
-
-    val user = currentUser
-    if (user == null) {
-        SignInScreen(
-            onAuthSuccess = { currentUser = Firebase.auth.currentUser }
-        )
-    } else {
-        key(user.uid) {
-            AuthenticatedBrasManagerApp(
-                currentUserId = user.uid,
-                displayName = user.displayName ?: "Técnico"
-            )
-        }
-    }
+    BrasManagerApp()
 }
 
 @Composable
-private fun AuthenticatedBrasManagerApp(
-    currentUserId: String,
-    displayName: String
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val credentialManager = remember { CredentialManager.create(context) }
-
+private fun BrasManagerApp() {
     val viewModel: BrasManagerViewModel = viewModel(
-        key = currentUserId,
         factory = viewModelFactory {
             initializer {
                 val app = checkNotNull(this[APPLICATION_KEY]) { "APPLICATION_KEY missing" } as Application
-                val databaseId = app.getString(R.string.firestore_database_id)
-                val db = FirebaseFirestore.getInstance(databaseId)
-                val firestoreRepo = CareerFirestoreRepository(db)
                 val localDb = BrasManagerDatabase.getInstance(app)
+                val careerRepo = LocalCareerRepository(localDb.careerLocalDao())
                 val syncRepo = SquadSyncRepository(EspnSoccerApi.create(), localDb.squadCacheDao())
                 BrasManagerViewModel(
-                    firestoreRepo = firestoreRepo,
-                    syncRepo = syncRepo,
-                    currentUserId = currentUserId,
-                    initialDisplayName = displayName
+                    careerRepo = careerRepo,
+                    syncRepo = syncRepo
                 )
             }
         }
@@ -174,7 +130,8 @@ private fun AuthenticatedBrasManagerApp(
             onSetMentality = viewModel::setLiveMentality,
             onMakeSub = viewModel::makeLiveSubstitution,
             onSkipToFullTime = viewModel::skipToFullTime,
-            onFinishRound = viewModel::finishMatchAndAdvanceRound
+            onFinishRound = viewModel::finishMatchAndAdvanceRound,
+            onToggleSound = viewModel::toggleMatchSound
         )
         return
     }
@@ -192,9 +149,7 @@ private fun AuthenticatedBrasManagerApp(
                     onStartNewCareer = viewModel::startNewCareer,
                     onDeleteCareer = viewModel::deleteCareer,
                     onSyncNow = { viewModel.syncLiveSquads(automatic = false) },
-                    onSignOut = {
-                        signOutManager(credentialManager, scope)
-                    }
+                    onUpdateManagerName = viewModel::updateManagerName
                 )
             }
         }
@@ -263,6 +218,24 @@ private fun AuthenticatedBrasManagerApp(
                         modifier = Modifier.testTag("nav_tabela")
                     )
                     NavigationBarItem(
+                        selected = currentRoute == ROUTE_NEWS,
+                        onClick = {
+                            navController.navigate(ROUTE_NEWS) {
+                                popUpTo(ROUTE_DASHBOARD) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = {
+                            Icon(
+                                if (currentRoute == ROUTE_NEWS) Icons.Filled.Newspaper else Icons.Outlined.Newspaper,
+                                contentDescription = "Notícias"
+                            )
+                        },
+                        label = { Text("Notícias") },
+                        modifier = Modifier.testTag("nav_noticias")
+                    )
+                    NavigationBarItem(
                         selected = currentRoute == ROUTE_MARKET,
                         onClick = {
                             navController.navigate(ROUTE_MARKET) {
@@ -292,6 +265,7 @@ private fun AuthenticatedBrasManagerApp(
                     DashboardScreen(
                         uiState = uiState,
                         onPlayRound = viewModel::startLiveMatch,
+                        onPlayCupMatch = viewModel::startCupMatch,
                         onStartNextSeason = viewModel::startNextSeason,
                         onTicketPriceChange = viewModel::setTicketPriceLevel,
                         onTrainingChange = viewModel::setTrainingFocus,
@@ -299,7 +273,24 @@ private fun AuthenticatedBrasManagerApp(
                         onTakeLoan = viewModel::takeBankLoan,
                         onAcceptOffer = viewModel::acceptIncomingOffer,
                         onRejectOffer = viewModel::rejectIncomingOffer,
+                        onAcceptJobOffer = viewModel::acceptJobOffer,
+                        onTakeEmergencyRehire = viewModel::takeEmergencyRehire,
+                        onOpenFinances = {
+                            navController.navigate(ROUTE_FINANCES) {
+                                launchSingleTop = true
+                            }
+                        },
                         onExitCareer = viewModel::exitToCareerHub
+                    )
+                }
+                composable(ROUTE_FINANCES) {
+                    FinancesScreen(
+                        uiState = uiState,
+                        onTicketPriceChange = viewModel::setTicketPriceLevel,
+                        onExpandStadium = viewModel::expandStadium,
+                        onTakeLoan = viewModel::takeBankLoan,
+                        onSelectSponsor = viewModel::selectSponsor,
+                        onBack = { navController.popBackStack() }
                     )
                 }
                 composable(ROUTE_SQUAD) {
@@ -308,11 +299,16 @@ private fun AuthenticatedBrasManagerApp(
                         onToggleStarter = viewModel::toggleStarter,
                         onAutoBestLineup = viewModel::autoSelectBestLineup,
                         onUpdateTactics = viewModel::updateTactics,
-                        onToggleForSale = viewModel::togglePlayerForSale
+                        onToggleForSale = viewModel::togglePlayerForSale,
+                        onPromoteYouth = viewModel::promoteYouthProspect,
+                        onRenewContract = viewModel::renewPlayerContract
                     )
                 }
                 composable(ROUTE_TABLE) {
                     TableCalendarScreen(uiState = uiState)
+                }
+                composable(ROUTE_NEWS) {
+                    NewsFeedScreen(uiState = uiState)
                 }
                 composable(ROUTE_MARKET) {
                     MarketSyncScreen(

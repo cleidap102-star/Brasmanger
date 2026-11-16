@@ -1,8 +1,139 @@
 package com.example.domain.model
 
-enum class Division(val label: String, val code: String) {
-    SERIE_A("Brasileirão Série A", "SERIE_A"),
-    SERIE_B("Brasileirão Série B", "SERIE_B")
+enum class Division(
+    val label: String,
+    val shortLabel: String,
+    val code: String,
+    val country: String,
+    val espnSlug: String,
+    val totalRounds: Int,
+    val promotedTo: String? = null,
+    val relegatedTo: String? = null,
+    val promotionSpots: Int = 0,
+    val relegationSpots: Int = 0,
+    val championsSpots: Int = 4,
+    val secondaryContSpots: Int = 0
+) {
+    SERIE_A(
+        label = "Brasileirão Série A",
+        shortLabel = "Série A",
+        code = "SERIE_A",
+        country = "Brasil",
+        espnSlug = "bra.1",
+        totalRounds = 38,
+        relegatedTo = "SERIE_B",
+        relegationSpots = 4,
+        championsSpots = 6,
+        secondaryContSpots = 12
+    ),
+    SERIE_B(
+        label = "Brasileirão Série B",
+        shortLabel = "Série B",
+        code = "SERIE_B",
+        country = "Brasil",
+        espnSlug = "bra.2",
+        totalRounds = 38,
+        promotedTo = "SERIE_A",
+        relegatedTo = "SERIE_C",
+        promotionSpots = 4,
+        relegationSpots = 4,
+        championsSpots = 0
+    ),
+    SERIE_C(
+        label = "Brasileirão Série C",
+        shortLabel = "Série C",
+        code = "SERIE_C",
+        country = "Brasil",
+        espnSlug = "",
+        totalRounds = 38,
+        promotedTo = "SERIE_B",
+        relegatedTo = "SERIE_D",
+        promotionSpots = 4,
+        relegationSpots = 4,
+        championsSpots = 0
+    ),
+    SERIE_D(
+        label = "Brasileirão Série D",
+        shortLabel = "Série D",
+        code = "SERIE_D",
+        country = "Brasil",
+        espnSlug = "",
+        totalRounds = 38,
+        promotedTo = "SERIE_C",
+        promotionSpots = 4,
+        championsSpots = 0
+    ),
+    PREMIER_LEAGUE(
+        label = "Premier League",
+        shortLabel = "Premier League",
+        code = "PREMIER_LEAGUE",
+        country = "Inglaterra",
+        espnSlug = "eng.1",
+        totalRounds = 38,
+        relegationSpots = 3,
+        championsSpots = 4,
+        secondaryContSpots = 6
+    ),
+    LA_LIGA(
+        label = "La Liga",
+        shortLabel = "La Liga",
+        code = "LA_LIGA",
+        country = "Espanha",
+        espnSlug = "esp.1",
+        totalRounds = 38,
+        relegationSpots = 3,
+        championsSpots = 4,
+        secondaryContSpots = 6
+    ),
+    SERIE_A_ITA(
+        label = "Serie A Itália",
+        shortLabel = "Serie A ITA",
+        code = "SERIE_A_ITA",
+        country = "Itália",
+        espnSlug = "ita.1",
+        totalRounds = 38,
+        relegationSpots = 3,
+        championsSpots = 4,
+        secondaryContSpots = 6
+    ),
+    BUNDESLIGA(
+        label = "Bundesliga",
+        shortLabel = "Bundesliga",
+        code = "BUNDESLIGA",
+        country = "Alemanha",
+        espnSlug = "ger.1",
+        totalRounds = 34,
+        relegationSpots = 3,
+        championsSpots = 4,
+        secondaryContSpots = 6
+    ),
+    LIGUE_1(
+        label = "Ligue 1",
+        shortLabel = "Ligue 1",
+        code = "LIGUE_1",
+        country = "França",
+        espnSlug = "fra.1",
+        totalRounds = 34,
+        relegationSpots = 3,
+        championsSpots = 4,
+        secondaryContSpots = 6
+    ),
+    LIGA_ARGENTINA(
+        label = "Liga Argentina",
+        shortLabel = "Liga Argentina",
+        code = "LIGA_ARGENTINA",
+        country = "Argentina",
+        espnSlug = "arg.1",
+        totalRounds = 38,
+        relegationSpots = 4,
+        championsSpots = 4,
+        secondaryContSpots = 8
+    );
+
+    companion object {
+        fun fromCode(code: String): Division =
+            entries.firstOrNull { it.code == code } ?: SERIE_A
+    }
 }
 
 enum class PlayerPosition(val code: String, val displayName: String, val sectorOrder: Int) {
@@ -109,7 +240,9 @@ data class Player(
     val assistsSeason: Int = 0,
     val isStarter: Boolean = false,
     val forSale: Boolean = false,
-    val espnAthleteId: String? = null
+    val espnAthleteId: String? = null,
+    val contractRounds: Int = 38,
+    val potential: Int = overall
 ) {
     val isAvailable: Boolean get() = suspendedRounds == 0 && injuredRounds == 0
     val effectiveOverall: Int
@@ -159,7 +292,32 @@ data class Club(
 enum class CompetitionType(val label: String) {
     BRASILEIRAO_A("Brasileirão Série A"),
     BRASILEIRAO_B("Brasileirão Série B"),
-    COPA_DO_BRASIL("Copa do Brasil")
+    BRASILEIRAO_C("Brasileirão Série C"),
+    BRASILEIRAO_D("Brasileirão Série D"),
+    PREMIER_LEAGUE("Premier League"),
+    LA_LIGA("La Liga"),
+    SERIE_A_ITA("Serie A Itália"),
+    BUNDESLIGA("Bundesliga"),
+    LIGUE_1("Ligue 1"),
+    LIGA_ARGENTINA("Liga Argentina"),
+    COPA_DO_BRASIL("Copa do Brasil"),
+    LIBERTADORES("Copa Libertadores"),
+    CHAMPIONS_LEAGUE("UEFA Champions League");
+
+    companion object {
+        fun fromDivision(division: Division): CompetitionType = when (division) {
+            Division.SERIE_A -> BRASILEIRAO_A
+            Division.SERIE_B -> BRASILEIRAO_B
+            Division.SERIE_C -> BRASILEIRAO_C
+            Division.SERIE_D -> BRASILEIRAO_D
+            Division.PREMIER_LEAGUE -> PREMIER_LEAGUE
+            Division.LA_LIGA -> LA_LIGA
+            Division.SERIE_A_ITA -> SERIE_A_ITA
+            Division.BUNDESLIGA -> BUNDESLIGA
+            Division.LIGUE_1 -> LIGUE_1
+            Division.LIGA_ARGENTINA -> LIGA_ARGENTINA
+        }
+    }
 }
 
 enum class MatchEventType {
@@ -184,7 +342,7 @@ data class Fixture(
     val homeScore: Int = 0,
     val awayScore: Int = 0,
     val played: Boolean = false,
-    val competition: CompetitionType = if (division == Division.SERIE_A) CompetitionType.BRASILEIRAO_A else CompetitionType.BRASILEIRAO_B,
+    val competition: CompetitionType = CompetitionType.fromDivision(division),
     val events: List<MatchEvent> = emptyList(),
     val attendance: Int = 0,
     val revenue: Long = 0L
@@ -228,7 +386,13 @@ data class LiveMatchState(
     val ticketRevenue: Long = 0L,
     val substitutionsUsed: Int = 0,
     val maxSubstitutions: Int = 5,
-    val manOfTheMatch: String? = null
+    val manOfTheMatch: String? = null,
+    val isKnockout: Boolean = false,
+    val cupType: CupType? = null,
+    val cupTieId: String? = null,
+    val cupStageLabel: String? = null,
+    val penaltyShootout: PenaltyShootoutResult? = null,
+    val ballZone: Float = 0.5f
 )
 
 data class IncomingTransferOffer(
@@ -258,3 +422,159 @@ data class SquadSyncReport(
     val entries: List<SquadSyncEntry>,
     val summary: String
 )
+
+enum class NewsCategory(val label: String) {
+    TRANSFER("Mercado"),
+    MATCH_RESULT("Resultados"),
+    CLUB_BUZZ("Bastidores"),
+    SYNC_UPDATE("Elencos Reais")
+}
+
+data class NewsItem(
+    val id: String,
+    val category: NewsCategory,
+    val round: Int,
+    val headline: String,
+    val body: String,
+    val clubId: String? = null,
+    val clubName: String? = null,
+    val clubShortName: String? = null,
+    val clubColorHex: Long? = null,
+    val clubSecondaryColorHex: Long? = null,
+    val isBreaking: Boolean = false,
+    val tagLabel: String = ""
+)
+
+data class MonthlyLedgerRecord(
+    val monthIndex: Int,
+    val ticketIncome: Long = 0L,
+    val salaryExpense: Long = 0L,
+    val otherDelta: Long = 0L,
+    val roundsPlayed: Int = 0,
+    val homeMatchesPlayed: Int = 0,
+    val endingBudget: Long? = null
+)
+
+data class MonthlyFinancePoint(
+    val monthIndex: Int,
+    val monthLabel: String,
+    val ticketIncome: Long,
+    val salaryExpense: Long,
+    val netCashFlow: Long,
+    val budgetBalance: Long,
+    val homeMatches: Int,
+    val isProjected: Boolean
+)
+
+data class PenaltyShootoutResult(
+    val homePenalties: Int,
+    val awayPenalties: Int,
+    val winnerClubId: String,
+    val summary: String
+)
+
+enum class CupType(
+    val competition: CompetitionType,
+    val title: String,
+    val stageNames: List<String>
+) {
+    COPA_DO_BRASIL(
+        competition = CompetitionType.COPA_DO_BRASIL,
+        title = "Copa do Brasil",
+        stageNames = listOf("Oitavas de Final", "Quartas de Final", "Semifinal", "Final")
+    ),
+    LIBERTADORES(
+        competition = CompetitionType.LIBERTADORES,
+        title = "Copa Libertadores",
+        stageNames = listOf("Oitavas de Final", "Quartas de Final", "Semifinal", "Final")
+    ),
+    CHAMPIONS(
+        competition = CompetitionType.CHAMPIONS_LEAGUE,
+        title = "UEFA Champions League",
+        stageNames = listOf("Oitavas de Final", "Quartas de Final", "Semifinal", "Final")
+    )
+}
+
+data class CupMatchTie(
+    val id: String,
+    val cupType: CupType,
+    val stageIndex: Int,
+    val stageLabel: String,
+    val homeClubId: String,
+    val awayClubId: String,
+    val homeScore: Int? = null,
+    val awayScore: Int? = null,
+    val winnerClubId: String? = null,
+    val shootout: PenaltyShootoutResult? = null,
+    val triggerAfterLeagueRound: Int = 6
+)
+
+data class CupCompetitionState(
+    val cupType: CupType,
+    val currentStageIndex: Int = 0,
+    val championClubId: String? = null,
+    val ties: List<CupMatchTie> = emptyList()
+)
+
+data class SponsorDeal(
+    val id: String,
+    val name: String,
+    val tagline: String,
+    val perRoundBase: Long,
+    val winBonus: Long,
+    val titleBonus: Long,
+    val minPrestige: Int = 1
+)
+
+data class YouthProspect(
+    val id: String,
+    val name: String,
+    val position: PlayerPosition,
+    val overall: Int,
+    val potential: Int,
+    val age: Int,
+    val salary: Long,
+    val marketValue: Long,
+    val traits: List<PlayerTrait> = emptyList()
+)
+
+data class ManagerJobOffer(
+    val id: String,
+    val clubId: String,
+    val clubName: String,
+    val division: Division,
+    val budget: Long,
+    val avgOverall: Int,
+    val prestige: Int,
+    val reason: String
+)
+
+data class SeasonAwardSummary(
+    val seasonYear: Long,
+    val divisionLabel: String,
+    val championClubName: String,
+    val userFinishPos: Int,
+    val prizeMoney: Long,
+    val goldenBootName: String,
+    val goldenBootClub: String,
+    val goldenBootGoals: Int,
+    val playmakerName: String,
+    val playmakerClub: String,
+    val playmakerAssists: Int,
+    val bestPlayerName: String,
+    val bestPlayerClub: String,
+    val managerOfTheYear: String
+)
+
+data class SeasonSnapshot(
+    val clubs: List<Club>,
+    val fixtures: List<Fixture>,
+    val monthlyLedger: Map<Int, MonthlyLedgerRecord>,
+    val seasonTicketRevenue: Long,
+    val cups: List<CupCompetitionState> = emptyList(),
+    val activeSponsor: SponsorDeal? = null,
+    val youthProspects: List<YouthProspect> = emptyList(),
+    val pendingJobOffers: List<ManagerJobOffer> = emptyList(),
+    val isSacked: Boolean = false
+)
+

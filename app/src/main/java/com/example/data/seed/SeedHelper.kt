@@ -112,3 +112,59 @@ internal data class PlayerSpec(
     val shirt: Int,
     val nat: String = "Brasil"
 )
+
+internal fun makeLeagueClub(
+    id: String,
+    name: String,
+    shortName: String,
+    division: Division,
+    primaryHex: Long,
+    secondaryHex: Long,
+    stadium: String,
+    capacity: Int,
+    prestige: Int,
+    budget: Long,
+    espnId: String,
+    names: List<String>,
+    baseOverall: Int,
+    maxOverall: Int = 89,
+    minOverall: Int = 58
+): Club {
+    val positions = listOf(
+        PlayerPosition.GOL, PlayerPosition.LAT, PlayerPosition.ZAG, PlayerPosition.ZAG, PlayerPosition.LAT,
+        PlayerPosition.MEI, PlayerPosition.MEI, PlayerPosition.MEI,
+        PlayerPosition.ATA, PlayerPosition.ATA, PlayerPosition.ATA,
+        PlayerPosition.GOL, PlayerPosition.LAT, PlayerPosition.ZAG, PlayerPosition.MEI, PlayerPosition.ATA
+    )
+    val specs = names.take(16).mapIndexed { idx, playerName ->
+        val starBoost = when {
+            idx in listOf(7, 8, 9) -> 2
+            idx == 10 -> 1
+            else -> 0
+        }
+        val ovr = (baseOverall - (idx / 5) + starBoost).coerceIn(minOverall, maxOverall)
+        val age = 20 + ((idx * 3 + id.hashCode().let { if (it < 0) -it else it }) % 14)
+        PlayerSpec(
+            name = playerName,
+            pos = positions[idx % positions.size],
+            ovr = ovr,
+            age = age,
+            shirt = idx + 1,
+            nat = division.country
+        )
+    }
+    return buildClub(
+        id = id,
+        name = name,
+        shortName = shortName,
+        division = division,
+        primaryHex = primaryHex,
+        secondaryHex = secondaryHex,
+        stadium = stadium,
+        capacity = capacity,
+        prestige = prestige,
+        budget = budget,
+        espnId = espnId,
+        specs = specs
+    )
+}

@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
@@ -51,10 +53,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.domain.engine.CupAndCareerEngine
 import com.example.domain.model.Formation
 import com.example.domain.model.MarkingStyle
 import com.example.domain.model.Mentality
 import com.example.domain.model.Player
+import com.example.domain.model.YouthProspect
 import com.example.ui.components.TacticalPitchView
 import com.example.ui.components.formatCurrency
 import com.example.ui.theme.AlertRed
@@ -72,7 +76,9 @@ fun SquadTacticsScreen(
     onToggleStarter: (String) -> Unit,
     onAutoBestLineup: () -> Unit,
     onUpdateTactics: (Formation, Mentality, MarkingStyle) -> Unit,
-    onToggleForSale: (String) -> Unit
+    onToggleForSale: (String) -> Unit,
+    onPromoteYouth: (String) -> Unit = {},
+    onRenewContract: (String) -> Unit = {}
 ) {
     val club = uiState.userClub ?: return
     var subTab by remember { mutableIntStateOf(0) }
@@ -130,12 +136,17 @@ fun SquadTacticsScreen(
                 Tab(
                     selected = subTab == 0,
                     onClick = { subTab = 0 },
-                    text = { Text("Campo Tático") }
+                    text = { Text("Campo") }
                 )
                 Tab(
                     selected = subTab == 1,
                     onClick = { subTab = 1 },
                     text = { Text("Elenco (${club.players.size})") }
+                )
+                Tab(
+                    selected = subTab == 2,
+                    onClick = { subTab = 2 },
+                    text = { Text("Base (${uiState.youthProspects.size})") }
                 )
             }
 
@@ -208,11 +219,12 @@ fun SquadTacticsScreen(
                         PlayerRosterCard(
                             player = player,
                             onToggleStarter = { onToggleStarter(player.id) },
-                            onToggleForSale = { onToggleForSale(player.id) }
+                            onToggleForSale = { onToggleForSale(player.id) },
+                            onRenewContract = { onRenewContract(player.id) }
                         )
                     }
                 }
-            } else {
+            } else if (subTab == 1) {
                 LazyColumn(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -228,7 +240,8 @@ fun SquadTacticsScreen(
                         PlayerRosterCard(
                             player = player,
                             onToggleStarter = { onToggleStarter(player.id) },
-                            onToggleForSale = { onToggleForSale(player.id) }
+                            onToggleForSale = { onToggleForSale(player.id) },
+                            onRenewContract = { onRenewContract(player.id) }
                         )
                     }
                     item {
@@ -243,8 +256,54 @@ fun SquadTacticsScreen(
                         PlayerRosterCard(
                             player = player,
                             onToggleStarter = { onToggleStarter(player.id) },
-                            onToggleForSale = { onToggleForSale(player.id) }
+                            onToggleForSale = { onToggleForSale(player.id) },
+                            onRenewContract = { onRenewContract(player.id) }
                         )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.School, contentDescription = null, tint = BrazilGold500, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Categorias de Base Sub-20", style = MaterialTheme.typography.titleMedium, color = BrazilGold500)
+                                    Text(
+                                        text = "Promova jovens talentos sem custo de transferência! Dica: use o treino 'Base' para revelar joias ainda melhores.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (uiState.youthProspects.isEmpty()) {
+                        item {
+                            Text(
+                                text = "Todas as promessas desta safra já foram promovidas! Novos talentos chegam na próxima temporada.",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                    } else {
+                        items(uiState.youthProspects, key = { it.id }) { prospect ->
+                            YouthProspectCard(
+                                prospect = prospect,
+                                onPromote = { onPromoteYouth(prospect.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -256,7 +315,8 @@ fun SquadTacticsScreen(
 private fun PlayerRosterCard(
     player: Player,
     onToggleStarter: () -> Unit,
-    onToggleForSale: () -> Unit
+    onToggleForSale: () -> Unit,
+    onRenewContract: () -> Unit = {}
 ) {
     val posColor = when (player.position.code) {
         "GOL" -> BrazilGold500
@@ -316,9 +376,9 @@ private fun PlayerRosterCard(
                     }
                 }
                 Text(
-                    text = "${player.age} anos • ${player.goalsSeason} gols • ${formatCurrency(player.marketValue)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "${player.age} anos • ${player.goalsSeason}g/${player.assistsSeason}a • Contrato ${player.contractRounds}r",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (player.contractRounds <= 12) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -351,6 +411,17 @@ private fun PlayerRosterCard(
                     )
                 }
             }
+            IconButton(
+                onClick = onRenewContract,
+                modifier = Modifier.testTag("renew_contract_${player.id}")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Autorenew,
+                    contentDescription = "Renovar contrato",
+                    tint = if (player.contractRounds <= 16) BrazilGold500 else InfoSky,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
             IconButton(onClick = onToggleForSale) {
                 Icon(
                     imageVector = Icons.Default.Sell,
@@ -369,3 +440,51 @@ private fun PlayerRosterCard(
         }
     }
 }
+
+@Composable
+private fun YouthProspectCard(
+    prospect: YouthProspect,
+    onPromote: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = PitchGreen500.copy(alpha = 0.20f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.size(width = 46.dp, height = 34.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(prospect.position.code, style = MaterialTheme.typography.labelMedium, color = PitchGreen500)
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(prospect.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "${prospect.age} anos • OVR ${prospect.overall} → POT ${prospect.potential} • Salário ${formatCurrency(prospect.salary)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = onPromote,
+                colors = ButtonDefaults.buttonColors(containerColor = BrazilGold500, contentColor = PitchEmerald950),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.testTag("promote_youth_${prospect.id}")
+            ) {
+                Text("Promover", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+

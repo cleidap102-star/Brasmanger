@@ -17,6 +17,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
 import kotlin.math.abs
@@ -51,7 +53,8 @@ class SquadSyncRepository(
 
     suspend fun syncLiveRosters(
         currentClubs: List<Club>,
-        preserveUserSignings: Boolean = true
+        preserveUserSignings: Boolean = true,
+        priorityDivision: Division? = null
     ): Pair<List<Club>, SquadSyncReport> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val entries = mutableListOf<SquadSyncEntry>()
@@ -60,23 +63,36 @@ class SquadSyncRepository(
         var removedCount = 0
         var clubsSyncedCount = 0
 
-        val espnTeamsByLeague = mutableMapOf<String, List<EspnTeamDto>>()
-        try {
-            val serieAResp = api.getLeagueTeams("bra.1")
-            espnTeamsByLeague["bra.1"] = serieAResp.sports
-                ?.firstOrNull()?.leagues?.firstOrNull()?.teams
-                ?.mapNotNull { it.team } ?: emptyList()
-        } catch (e: Exception) {
-            Log.w(TAG, "Falha ao buscar times bra.1 na ESPN: ${e.message}")
+        val targetDivisions = buildList {
+            if (priorityDivision != null && priorityDivision.espnSlug.isNotBlank()) {
+                add(priorityDivision)
+            }
+            if (Division.SERIE_A !in this) add(Division.SERIE_A)
+            if (priorityDivision == null && Division.SERIE_B !in this) add(Division.SERIE_B)
+            if (priorityDivision == null) {
+                Division.entries.filter { it.espnSlug.isNotBlank() && it !in this }.take(3).forEach { add(it) }
+            }
         }
+        val targetSlugs = targetDivisions.map { it.espnSlug }.distinct()
 
-        try {
-            val serieBResp = api.getLeagueTeams("bra.2")
-            espnTeamsByLeague["bra.2"] = serieBResp.sports
-                ?.firstOrNull()?.leagues?.firstOrNull()?.teams
-                ?.mapNotNull { it.team } ?: emptyList()
-        } catch (e: Exception) {
-            Log.w(TAG, "Falha ao buscar times bra.2 na ESPN: ${e.message}")
+        val espnTeamsByLeague = mutableMapOf<String, List<EspnTeamDto>>()
+        coroutineScope {
+            targetSlugs.map { slug ->
+                async {
+                    try {
+                        val resp = api.getLeagueTeams(slug)
+                        val list = resp.sports
+                            ?.firstOrNull()?.leagues?.firstOrNull()?.teams
+                            ?.mapNotNull { it.team } ?: emptyList()
+                        slug to list
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Falha ao buscar times $slug na ESPN: ${e.message}")
+                        slug to emptyList()
+                    }
+                }
+            }.awaitAll().forEach { (slug, list) ->
+                if (list.isNotEmpty()) espnTeamsByLeague[slug] = list
+            }
         }
 
         val allRemoteTeams = espnTeamsByLeague.flatMap { (league, list) ->
@@ -86,7 +102,7 @@ class SquadSyncRepository(
         if (allRemoteTeams.isEmpty()) {
             val offlineReport = SquadSyncReport(
                 timestamp = now,
-                sourceLabel = "Base Local Brasileira 2026 (Sem conexão)",
+                sourceLabel = "Base Local 2026 (Sem conexão)",
                 isLiveNetwork = false,
                 clubsSynced = 0,
                 playersAdded = 0,
@@ -98,11 +114,16 @@ class SquadSyncRepository(
             return@withContext currentClubs to offlineReport
         }
 
+        val clubsToFetchRoster = currentClubs.filter { it.division in targetDivisions }.map { it.id }.toSet()
+        val semaphore = Semaphore(8)
         val metaToSave = mutableListOf<SyncedClubMetaEntity>()
         val clubResults = coroutineScope {
             currentClubs.map { club ->
                 async {
-                    val primaryLeague = if (club.division == Division.SERIE_A) "bra.1" else "bra.2"
+                    if (club.id !in clubsToFetchRoster || club.division.espnSlug.isBlank()) {
+                        return@async club to emptyList<SyncedPlayerEntity>()
+                    }
+                    val primaryLeague = club.division.espnSlug
                     val matchedRemote = findMatchingEspnTeam(club, allRemoteTeams, primaryLeague)
                     if (matchedRemote == null) {
                         club to emptyList<SyncedPlayerEntity>()
@@ -110,21 +131,25 @@ class SquadSyncRepository(
                         val (league, remoteTeam) = matchedRemote
                         val teamId = remoteTeam.id.orEmpty()
                         val crestUrl = remoteTeam.logos?.firstOrNull()?.href
-                        metaToSave.add(
-                            SyncedClubMetaEntity(
-                                clubId = club.id,
-                                espnTeamId = teamId,
-                                crestUrl = crestUrl,
-                                lastSyncedAtMs = now
+                        synchronized(metaToSave) {
+                            metaToSave.add(
+                                SyncedClubMetaEntity(
+                                    clubId = club.id,
+                                    espnTeamId = teamId,
+                                    crestUrl = crestUrl,
+                                    lastSyncedAtMs = now
+                                )
                             )
-                        )
-                        val roster = try {
-                            if (teamId.isNotBlank()) {
-                                api.getTeamRoster(league, teamId).athletes.orEmpty()
-                            } else emptyList()
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Falha ao buscar elenco de ${club.name}: ${e.message}")
-                            emptyList()
+                        }
+                        val roster = semaphore.withPermit {
+                            try {
+                                if (teamId.isNotBlank()) {
+                                    api.getTeamRoster(league, teamId).athletes.orEmpty()
+                                } else emptyList()
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Falha ao buscar elenco de ${club.name}: ${e.message}")
+                                emptyList()
+                            }
                         }
 
                         if (roster.isEmpty()) {
@@ -265,10 +290,11 @@ class SquadSyncRepository(
         val summary = "Sincronização ao vivo concluída: $clubsSyncedCount clubes verificados, " +
             "$addedCount reforços adicionados e $updatedCount atletas atualizados."
 
+        val slugLabel = targetSlugs.joinToString(", ")
         cacheDao.insertSyncLog(
             SyncLogEntity(
                 timestampMs = now,
-                sourceLabel = "ESPN Brasil API (Série A & B)",
+                sourceLabel = "ESPN Live API ($slugLabel)",
                 clubsSynced = clubsSyncedCount,
                 playersAdded = addedCount,
                 playersUpdated = updatedCount,
@@ -278,7 +304,7 @@ class SquadSyncRepository(
 
         val report = SquadSyncReport(
             timestamp = now,
-            sourceLabel = "ESPN Brasil Live API (bra.1 / bra.2)",
+            sourceLabel = "ESPN Live API ($slugLabel)",
             isLiveNetwork = true,
             clubsSynced = clubsSyncedCount,
             playersAdded = addedCount,

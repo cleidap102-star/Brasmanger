@@ -66,6 +66,12 @@ object SeasonEngine {
     }
 
     /**
+     * Generates schedules for every playable division in the world.
+     */
+    fun generateAllFixtures(clubs: List<Club>): List<Fixture> =
+        Division.entries.flatMap { div -> generateLeagueFixtures(clubs, div) }
+
+    /**
      * Auto-picks the best available 11 starters matching the selected formation.
      */
     fun autoSelectBestLineup(players: List<Player>, formation: Formation): List<Player> {
@@ -217,6 +223,7 @@ object SeasonEngine {
         var shotsA = state.shotsAway
         var cornersH = state.cornersHome
         var cornersA = state.cornersAway
+        var nextBallZone = (state.ballZone + (Random.nextFloat() - 0.5f) * 0.24f).coerceIn(0.18f, 0.82f)
 
         val homeClub = clubMap[userMatch.homeClubId] ?: userClub
         val awayClub = clubMap[userMatch.awayClubId] ?: userClub
@@ -247,6 +254,7 @@ object SeasonEngine {
         val roll = Random.nextDouble()
         if (roll < homeChanceProb) {
             shotsH++
+            nextBallZone = Random.nextDouble(0.74, 0.94).toFloat()
             if (Random.nextDouble() < 0.35) cornersH++
             val scorer = pickAttackerOrMid(homeClub)
             val assist = pickAssistPlayer(homeClub, scorer)
@@ -284,6 +292,7 @@ object SeasonEngine {
             }
         } else if (roll < homeChanceProb + awayChanceProb) {
             shotsA++
+            nextBallZone = Random.nextDouble(0.06, 0.26).toFloat()
             if (Random.nextDouble() < 0.35) cornersA++
             val scorer = pickAttackerOrMid(awayClub)
             val assist = pickAssistPlayer(awayClub, scorer)
@@ -392,6 +401,17 @@ object SeasonEngine {
                 )
             )
         }
+        val shootoutResult = if (hitFulltime && state.isKnockout && userMatch.homeScore == userMatch.awayScore) {
+            CupAndCareerEngine.simulatePenaltyShootout(
+                homeClubId = homeClub.id,
+                awayClubId = awayClub.id,
+                homeShort = userMatch.homeShort,
+                awayShort = userMatch.awayShort,
+                homeStrength = homeStr,
+                awayStrength = awayStr
+            )
+        } else null
+
         if (hitFulltime) {
             newEvents.add(
                 0,
@@ -403,6 +423,18 @@ object SeasonEngine {
                     description = "Apita o árbitro! Fim de jogo: ${userMatch.homeName} ${userMatch.homeScore} x ${userMatch.awayScore} ${userMatch.awayName}"
                 )
             )
+            if (shootoutResult != null) {
+                newEvents.add(
+                    0,
+                    MatchEvent(
+                        minute = 90,
+                        type = MatchEventType.FULLTIME,
+                        clubId = shootoutResult.winnerClubId,
+                        playerName = "",
+                        description = "DECISÃO NOS PÊNALTIS! ${shootoutResult.summary}"
+                    )
+                )
+            }
         }
 
         val possession = ((homeStr / (homeStr + awayStr)) * 100).roundToInt().coerceIn(32, 68)
@@ -434,7 +466,9 @@ object SeasonEngine {
             shotsAway = shotsA,
             cornersHome = cornersH,
             cornersAway = cornersA,
-            manOfTheMatch = motm
+            manOfTheMatch = motm,
+            penaltyShootout = shootoutResult,
+            ballZone = if (hitFulltime) 0.5f else nextBallZone
         )
     }
 
@@ -475,13 +509,13 @@ object SeasonEngine {
     ): Pair<List<Club>, List<Fixture>> {
         val allLiveMatches = listOf(liveState.userMatch) + liveState.otherMatches
         val liveById = allLiveMatches.associateBy { it.fixtureId }
-        val otherDivisionFixtures = fixtures.filter { f ->
-            f.round == liveState.round && !f.played && liveById[f.id] == null
-        }
+        val otherDivisionFixtureIds = fixtures.asSequence()
+            .filter { f -> f.round == liveState.round && !f.played && liveById[f.id] == null }
+            .mapTo(HashSet()) { it.id }
 
         val clubMap = clubs.associateBy { it.id }.toMutableMap()
 
-        // Update played fixtures for user's division + auto-simulate the other division's round
+        // Update played fixtures for user's division + auto-simulate all other divisions' rounds
         val updatedFixtures = fixtures.map { fixture ->
             val liveMatch = liveById[fixture.id]
             if (liveMatch != null) {
@@ -494,7 +528,7 @@ object SeasonEngine {
                     attendance = if (fixture.id == liveState.userMatch.fixtureId) liveState.attendance else 18_000,
                     revenue = if (fixture.id == liveState.userMatch.fixtureId) liveState.ticketRevenue else 0L
                 )
-            } else if (otherDivisionFixtures.any { it.id == fixture.id }) {
+            } else if (fixture.id in otherDivisionFixtureIds) {
                 val h = clubMap[fixture.homeClubId]
                 val a = clubMap[fixture.awayClubId]
                 val hStr = (h?.averageOverall ?: 70) + 2
@@ -602,13 +636,52 @@ object SeasonEngine {
                     assistsSeason = p.assistsSeason + assistsMade,
                     yellowCards = resetYellows,
                     suspendedRounds = newSusp,
-                    injuredRounds = (p.injuredRounds - 1).coerceAtLeast(0)
+                    injuredRounds = (p.injuredRounds - 1).coerceAtLeast(0),
+                    contractRounds = if (isUser) (p.contractRounds - 1).coerceAtLeast(1) else p.contractRounds
                 )
             }
             club.copy(players = updatedPlayers)
         }
 
         return finalClubs to updatedFixtures
+    }
+
+    /**
+     * Applies gate revenue, player stats, fatigue recovery, and sponsor/prize updates after a knockout cup match.
+     */
+    fun applyCupMatchResults(
+        clubs: List<Club>,
+        liveState: LiveMatchState,
+        userClubId: String,
+        trainingFocus: TrainingFocus,
+        marking: MarkingStyle
+    ): List<Club> {
+        val goalScorers = liveState.events.filter { it.type == MatchEventType.GOAL }
+        return clubs.map { club ->
+            val isUser = club.id == userClubId
+            val homeMatchRevenue = if (isUser && liveState.userIsHome) liveState.ticketRevenue else 0L
+            val drain = if (isUser) (10 * marking.energyDrain).toInt() else 8
+            val recovery = if (isUser && trainingFocus == TrainingFocus.FISICO) 15 else 9
+
+            val updatedPlayers = club.players.map { p ->
+                val goalsScored = goalScorers.count { it.clubId == club.id && it.playerName == p.name }
+                val assistsMade = goalScorers.count { it.clubId == club.id && it.assistName == p.name }
+                val newEnergy = if (p.isStarter) {
+                    (p.energy - drain + recovery).coerceIn(48, 100)
+                } else {
+                    (p.energy + recovery + 12).coerceIn(60, 100)
+                }
+                p.copy(
+                    energy = newEnergy,
+                    goalsSeason = p.goalsSeason + goalsScored,
+                    assistsSeason = p.assistsSeason + assistsMade
+                )
+            }
+            club.copy(
+                budget = club.budget + homeMatchRevenue,
+                players = updatedPlayers
+            )
+        }
     }
 
     fun sortStandings(clubs: List<Club>, division: Division): List<Club> {
@@ -623,25 +696,50 @@ object SeasonEngine {
     }
 
     /**
-     * Handles end-of-season promotion (G4 Serie B -> Serie A) & relegation (Z4 Serie A -> Serie B),
-     * resets seasonal stats, ages players by 1 year, and keeps squads/finances intact.
+     * Handles end-of-season promotion & relegation across all connected divisions (Série A <-> B <-> C <-> D),
+     * awards league prizes, resets seasonal stats, ages players by 1 year, and keeps squads/finances intact.
      */
     fun advanceToNextSeason(clubs: List<Club>): List<Club> {
-        val tableA = sortStandings(clubs, Division.SERIE_A)
-        val tableB = sortStandings(clubs, Division.SERIE_B)
-        val relegatedIds = tableA.takeLast(4).map { it.id }.toSet()
-        val promotedIds = tableB.take(4).map { it.id }.toSet()
+        val tables = Division.entries.associateWith { div -> sortStandings(clubs, div) }
+        val destinationDivision = mutableMapOf<String, Division>()
+        val championIds = mutableSetOf<String>()
+        val promotedIds = mutableSetOf<String>()
+
+        Division.entries.forEach { div ->
+            val table = tables[div].orEmpty()
+            table.firstOrNull()?.id?.let { championIds.add(it) }
+            if (div.promotionSpots > 0 && div.promotedTo != null) {
+                val targetUp = Division.fromCode(div.promotedTo)
+                table.take(div.promotionSpots).forEach { club ->
+                    destinationDivision[club.id] = targetUp
+                    promotedIds.add(club.id)
+                }
+            }
+            if (div.relegationSpots > 0 && div.relegatedTo != null) {
+                val targetDown = Division.fromCode(div.relegatedTo)
+                table.takeLast(div.relegationSpots).forEach { club ->
+                    destinationDivision[club.id] = targetDown
+                }
+            }
+        }
 
         return clubs.map { club ->
-            val newDiv = when {
-                club.id in relegatedIds -> Division.SERIE_B
-                club.id in promotedIds -> Division.SERIE_A
-                else -> club.division
-            }
-            val prize = when (club.id) {
-                tableA.firstOrNull()?.id -> 45_000_000L
-                tableB.firstOrNull()?.id -> 12_000_000L
-                in promotedIds -> 8_000_000L
+            val newDiv = destinationDivision[club.id] ?: club.division
+            val prize = when {
+                club.id in championIds -> when (club.division) {
+                    Division.SERIE_A, Division.PREMIER_LEAGUE, Division.LA_LIGA,
+                    Division.SERIE_A_ITA, Division.BUNDESLIGA, Division.LIGUE_1 -> 45_000_000L
+                    Division.LIGA_ARGENTINA -> 22_000_000L
+                    Division.SERIE_B -> 12_000_000L
+                    Division.SERIE_C -> 5_000_000L
+                    Division.SERIE_D -> 2_500_000L
+                }
+                club.id in promotedIds -> when (club.division) {
+                    Division.SERIE_B -> 8_000_000L
+                    Division.SERIE_C -> 3_500_000L
+                    else -> 1_800_000L
+                }
+                club.division == Division.SERIE_C || club.division == Division.SERIE_D -> 900_000L
                 else -> 3_000_000L
             }
             club.copy(
@@ -657,14 +755,17 @@ object SeasonEngine {
                 form = emptyList(),
                 copaEliminated = false,
                 players = club.players.map { p ->
+                    val youthBoost = if (p.age <= 22 && p.overall < p.potential) 1 else 0
                     p.copy(
                         age = p.age + 1,
+                        overall = (p.overall + youthBoost).coerceAtMost(95),
                         energy = 100,
                         goalsSeason = 0,
                         assistsSeason = 0,
                         yellowCards = 0,
                         suspendedRounds = 0,
-                        injuredRounds = 0
+                        injuredRounds = 0,
+                        contractRounds = p.contractRounds.coerceAtLeast(12)
                     )
                 }
             )
