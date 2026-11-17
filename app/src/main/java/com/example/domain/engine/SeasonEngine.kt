@@ -361,6 +361,29 @@ object SeasonEngine {
                     )
                 }
             }
+        } else if (
+            newEvents.none { it.type == MatchEventType.INJURY } &&
+            nextMinute in 12..84
+        ) {
+            val userStarters = userClub.players.filter { it.isStarter && it.injuredRounds == 0 }
+            val tiredCount = userStarters.count { it.energy < 65 }
+            val injuryProb = 0.014 * marking.energyDrain + (tiredCount * 0.004)
+            if (Random.nextDouble() < injuryProb) {
+                val victimPool = userStarters.filter { it.energy < 70 }.ifEmpty { userStarters }
+                val victim = victimPool.randomOrNull()
+                if (victim != null) {
+                    newEvents.add(
+                        0,
+                        MatchEvent(
+                            minute = nextMinute,
+                            type = MatchEventType.INJURY,
+                            clubId = userClub.id,
+                            playerName = victim.name,
+                            description = "DEPARTAMENTO MÉDICO: ${victim.name} (${userClub.shortName}) sentiu contusão em campo e virou dúvida!"
+                        )
+                    )
+                }
+            }
         }
 
         // Simulate simultaneous other matches (Brasfoot iconic scoreboard!)
@@ -505,7 +528,8 @@ object SeasonEngine {
         liveState: LiveMatchState,
         userClubId: String,
         trainingFocus: TrainingFocus,
-        marking: MarkingStyle
+        marking: MarkingStyle,
+        seasonYear: Long = 2026L
     ): Pair<List<Club>, List<Fixture>> {
         val allLiveMatches = listOf(liveState.userMatch) + liveState.otherMatches
         val liveById = allLiveMatches.associateBy { it.fixtureId }
@@ -588,10 +612,11 @@ object SeasonEngine {
             )
         }
 
-        // Apply stamina drain/recovery, goal stats, cards, and training development
+        // Apply stamina drain/recovery, goal stats, cards, injuries, and training development
         val goalScorers = liveState.events.filter { it.type == MatchEventType.GOAL }
         val yellowCards = liveState.events.filter { it.type == MatchEventType.YELLOW_CARD }
         val redCards = liveState.events.filter { it.type == MatchEventType.RED_CARD }
+        val injuryEvents = liveState.events.filter { it.type == MatchEventType.INJURY }
 
         val finalClubs = clubMap.values.map { club ->
             val isUser = club.id == userClubId
@@ -603,6 +628,7 @@ object SeasonEngine {
                 val assistsMade = goalScorers.count { it.clubId == club.id && it.assistName == p.name }
                 val yellows = yellowCards.count { it.clubId == club.id && it.playerName == p.name }
                 val reds = redCards.count { it.clubId == club.id && it.playerName == p.name }
+                val matchInjured = injuryEvents.any { it.clubId == club.id && it.playerName == p.name }
 
                 val totalYellows = p.yellowCards + yellows
                 val newSusp = when {
@@ -629,16 +655,29 @@ object SeasonEngine {
                 }
                 val newOvr = if (Random.nextDouble() < growthChance && p.overall < 90) p.overall + 1 else p.overall
 
-                p.copy(
-                    overall = newOvr,
-                    energy = newEnergy,
-                    goalsSeason = p.goalsSeason + goalsScored,
-                    assistsSeason = p.assistsSeason + assistsMade,
-                    yellowCards = resetYellows,
-                    suspendedRounds = newSusp,
-                    injuredRounds = (p.injuredRounds - 1).coerceAtLeast(0),
-                    contractRounds = if (isUser) (p.contractRounds - 1).coerceAtLeast(1) else p.contractRounds
+                val progressed = MedicalEngine.advanceRecoveryOneRound(
+                    player = p.copy(
+                        overall = newOvr,
+                        energy = newEnergy,
+                        goalsSeason = p.goalsSeason + goalsScored,
+                        assistsSeason = p.assistsSeason + assistsMade,
+                        yellowCards = resetYellows,
+                        suspendedRounds = newSusp,
+                        contractRounds = if (isUser) (p.contractRounds - 1).coerceAtLeast(1) else p.contractRounds
+                    ),
+                    currentRound = liveState.round
                 )
+
+                val fatigueKnock = isUser && p.injuredRounds == 0 && p.isStarter && newEnergy < 54 && Random.nextDouble() < 0.06
+                if (progressed.injuredRounds == 0 && (matchInjured || fatigueKnock)) {
+                    MedicalEngine.inflictInjury(
+                        player = progressed,
+                        seasonYear = seasonYear,
+                        round = liveState.round
+                    )
+                } else {
+                    progressed
+                }
             }
             club.copy(players = updatedPlayers)
         }
@@ -647,16 +686,18 @@ object SeasonEngine {
     }
 
     /**
-     * Applies gate revenue, player stats, fatigue recovery, and sponsor/prize updates after a knockout cup match.
+     * Applies gate revenue, player stats, fatigue recovery, and injury updates after a cup/Champions match.
      */
     fun applyCupMatchResults(
         clubs: List<Club>,
         liveState: LiveMatchState,
         userClubId: String,
         trainingFocus: TrainingFocus,
-        marking: MarkingStyle
+        marking: MarkingStyle,
+        seasonYear: Long = 2026L
     ): List<Club> {
         val goalScorers = liveState.events.filter { it.type == MatchEventType.GOAL }
+        val injuryEvents = liveState.events.filter { it.type == MatchEventType.INJURY }
         return clubs.map { club ->
             val isUser = club.id == userClubId
             val homeMatchRevenue = if (isUser && liveState.userIsHome) liveState.ticketRevenue else 0L
@@ -666,16 +707,20 @@ object SeasonEngine {
             val updatedPlayers = club.players.map { p ->
                 val goalsScored = goalScorers.count { it.clubId == club.id && it.playerName == p.name }
                 val assistsMade = goalScorers.count { it.clubId == club.id && it.assistName == p.name }
+                val matchInjured = injuryEvents.any { it.clubId == club.id && it.playerName == p.name }
                 val newEnergy = if (p.isStarter) {
                     (p.energy - drain + recovery).coerceIn(48, 100)
                 } else {
                     (p.energy + recovery + 12).coerceIn(60, 100)
                 }
-                p.copy(
+                val base = p.copy(
                     energy = newEnergy,
                     goalsSeason = p.goalsSeason + goalsScored,
                     assistsSeason = p.assistsSeason + assistsMade
                 )
+                if (base.injuredRounds == 0 && matchInjured) {
+                    MedicalEngine.inflictInjury(base, seasonYear, liveState.round)
+                } else base
             }
             club.copy(
                 budget = club.budget + homeMatchRevenue,
@@ -765,6 +810,13 @@ object SeasonEngine {
                         yellowCards = 0,
                         suspendedRounds = 0,
                         injuredRounds = 0,
+                        currentInjuryName = null,
+                        currentInjurySeverity = null,
+                        injuryEstimatedRounds = 0,
+                        injuryTreatedThisInjury = false,
+                        injuryHistory = p.injuryHistory.map { rec ->
+                            if (rec.recoveredRound == null) rec.copy(remainingRounds = 0, recoveredRound = club.division.totalRounds) else rec
+                        },
                         contractRounds = p.contractRounds.coerceAtLeast(12)
                     )
                 }

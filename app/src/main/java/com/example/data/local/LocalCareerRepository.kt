@@ -6,8 +6,13 @@ import com.example.data.firebase.CareerSave
 import com.example.data.firebase.ManagerProfile
 import com.example.data.firebase.TransferRecord
 import com.example.data.firebase.TrophyRecord
+import com.example.domain.model.AnnualAwardsRecord
+import com.example.domain.model.ChampionsLeagueState
 import com.example.domain.model.Club
+import com.example.domain.model.ClubGovernanceState
+import com.example.domain.model.ContinentalTournamentState
 import com.example.domain.model.CupCompetitionState
+import com.example.domain.model.FairPlayState
 import com.example.domain.model.Fixture
 import com.example.domain.model.ManagerJobOffer
 import com.example.domain.model.MonthlyLedgerRecord
@@ -36,7 +41,14 @@ internal data class PersistedSeasonSnapshot(
     val activeSponsor: SponsorDeal? = null,
     val youthProspects: List<YouthProspect> = emptyList(),
     val pendingJobOffers: List<ManagerJobOffer> = emptyList(),
-    val isSacked: Boolean = false
+    val isSacked: Boolean = false,
+    val championsLeague: ChampionsLeagueState? = null,
+    val annualAwardsHistory: List<AnnualAwardsRecord> = emptyList(),
+    val continentalTournaments: List<ContinentalTournamentState> = emptyList(),
+    val fairPlay: FairPlayState = FairPlayState(),
+    val governance: ClubGovernanceState = ClubGovernanceState(),
+    val userBallonDorPlayerId: String? = null,
+    val userBallonDorVoteSeason: Long = 0L
 )
 
 class LocalCareerRepository(
@@ -144,7 +156,14 @@ class LocalCareerRepository(
                     activeSponsor = snapshot.activeSponsor,
                     youthProspects = snapshot.youthProspects,
                     pendingJobOffers = snapshot.pendingJobOffers,
-                    isSacked = snapshot.isSacked
+                    isSacked = snapshot.isSacked,
+                    championsLeague = snapshot.championsLeague,
+                    annualAwardsHistory = snapshot.annualAwardsHistory,
+                    continentalTournaments = snapshot.continentalTournaments,
+                    fairPlay = snapshot.fairPlay,
+                    governance = snapshot.governance,
+                    userBallonDorPlayerId = snapshot.userBallonDorPlayerId,
+                    userBallonDorVoteSeason = snapshot.userBallonDorVoteSeason
                 )
                 val json = snapshotAdapter.toJson(payload)
                 val encoded = compressSnapshot(json)
@@ -173,7 +192,14 @@ class LocalCareerRepository(
                     activeSponsor = payload.activeSponsor,
                     youthProspects = payload.youthProspects,
                     pendingJobOffers = payload.pendingJobOffers,
-                    isSacked = payload.isSacked
+                    isSacked = payload.isSacked,
+                    championsLeague = payload.championsLeague,
+                    annualAwardsHistory = payload.annualAwardsHistory,
+                    continentalTournaments = payload.continentalTournaments,
+                    fairPlay = payload.fairPlay,
+                    governance = payload.governance,
+                    userBallonDorPlayerId = payload.userBallonDorPlayerId,
+                    userBallonDorVoteSeason = payload.userBallonDorVoteSeason
                 )
             }.onFailure { e ->
                 Log.w("LocalCareerRepository", "Failed to load season snapshot for $careerId", e)

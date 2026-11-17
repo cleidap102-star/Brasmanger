@@ -29,8 +29,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Stadium
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WorkOutline
 import androidx.compose.material3.AlertDialog
@@ -48,6 +53,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,7 +68,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.domain.engine.ChampionsLeagueEngine
+import com.example.domain.engine.ContinentalGroupEngine
 import com.example.domain.model.CupMatchTie
+import com.example.domain.model.FfpComplianceLevel
 import com.example.domain.model.IncomingTransferOffer
 import com.example.domain.model.ManagerJobOffer
 import com.example.domain.model.TicketPriceLevel
@@ -68,8 +80,10 @@ import com.example.ui.components.ClubBadge
 import com.example.ui.components.formatCurrency
 import com.example.ui.theme.AlertRed
 import com.example.ui.theme.BrazilGold500
+import com.example.ui.theme.InfoSky
 import com.example.ui.theme.PitchEmerald950
 import com.example.ui.theme.PitchGreen500
+import com.example.ui.theme.WarningAmber
 import com.example.ui.viewmodel.BrasManagerUiState
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -78,6 +92,8 @@ fun DashboardScreen(
     uiState: BrasManagerUiState,
     onPlayRound: () -> Unit,
     onPlayCupMatch: (CupMatchTie) -> Unit = {},
+    onPlayChampionsMatch: (ChampionsLeagueEngine.PendingChampionsMatch) -> Unit = {},
+    onPlayContinentalMatch: (ContinentalGroupEngine.PendingContinentalMatch) -> Unit = {},
     onStartNextSeason: () -> Unit,
     onTicketPriceChange: (TicketPriceLevel) -> Unit,
     onTrainingChange: (TrainingFocus) -> Unit,
@@ -87,11 +103,14 @@ fun DashboardScreen(
     onRejectOffer: (IncomingTransferOffer) -> Unit,
     onAcceptJobOffer: (ManagerJobOffer) -> Unit = {},
     onTakeEmergencyRehire: () -> Unit = {},
+    onSaveCareer: () -> Unit = {},
+    onVotePresidentialElection: (String) -> Unit = {},
     onOpenFinances: () -> Unit,
     onExitCareer: () -> Unit
 ) {
     val career = uiState.activeCareer ?: return
     val club = uiState.userClub ?: return
+    var showElectionDialog by remember { mutableStateOf(false) }
     val totalRounds = club.division.totalRounds
     val nextFixture = uiState.nextUserFixture
     val opponent = nextFixture?.let { f ->
@@ -158,28 +177,58 @@ fun DashboardScreen(
                                         tint = Color.White
                                     )
                                 }
-                                Surface(
-                                    color = Color.Black.copy(alpha = 0.45f),
-                                    shape = RoundedCornerShape(50)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    Surface(
+                                        color = Color.Black.copy(alpha = 0.45f),
+                                        shape = RoundedCornerShape(50)
                                     ) {
-                                        if (uiState.isSyncing) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            if (uiState.isSyncing) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CloudSync,
+                                                    contentDescription = null,
+                                                    tint = PitchGreen500,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                            }
+                                            Text(
+                                                text = "${club.division.label} • Temp. ${career.seasonYear}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = BrazilGold500
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        color = PitchGreen500,
+                                        shape = RoundedCornerShape(50),
+                                        onClick = onSaveCareer,
+                                        modifier = Modifier.testTag("save_career_button")
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
                                             Icon(
-                                                imageVector = Icons.Default.CloudSync,
-                                                contentDescription = null,
-                                                tint = PitchGreen500,
-                                                modifier = Modifier.size(14.dp)
+                                                imageVector = Icons.Default.Save,
+                                                contentDescription = "Salvar Carreira",
+                                                tint = PitchEmerald950,
+                                                modifier = Modifier.size(15.dp)
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Salvar",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = PitchEmerald950,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
-                                        Text(
-                                            text = "${club.division.label} • Temp. ${career.seasonYear}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = BrazilGold500
-                                        )
                                     }
                                 }
                             }
@@ -218,6 +267,163 @@ fun DashboardScreen(
                                 MetricPill("CAIXA", formatCurrency(club.budget), BrazilGold500)
                                 MetricPill("FORÇA", "${club.averageOverall} OVR", PitchGreen500)
                                 MetricPill("RODADA", "${career.currentRound.coerceAtMost(totalRounds.toLong())}/$totalRounds", Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Transfer Window Quick Status Bar
+            item {
+                val winStatus = uiState.transferWindowStatus
+                val winColor = if (winStatus.isOpen) PitchGreen500 else WarningAmber
+                Surface(
+                    color = winColor.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("dashboard_transfer_window_badge")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = winColor, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${winStatus.windowName}: ${winStatus.statusLabel}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = winColor,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            // Pending Champions League Match Card
+            val pendingUcl = uiState.pendingChampionsMatch
+            if (pendingUcl != null) {
+                item {
+                    val (homeId, awayId, subtitle) = when (pendingUcl) {
+                        is ChampionsLeagueEngine.PendingChampionsMatch.LeaguePhaseMatch ->
+                            Triple(
+                                pendingUcl.fixture.homeClubId,
+                                pendingUcl.fixture.awayClubId,
+                                "FASE DE LIGA • RODADA ${pendingUcl.fixture.matchday}/8"
+                            )
+                        is ChampionsLeagueEngine.PendingChampionsMatch.KnockoutMatch ->
+                            Triple(
+                                pendingUcl.tie.homeClubId,
+                                pendingUcl.tie.awayClubId,
+                                pendingUcl.tie.stageLabel.uppercase()
+                            )
+                    }
+                    val uclHome = uiState.clubs.firstOrNull { it.id == homeId }
+                    val uclAway = uiState.clubs.firstOrNull { it.id == awayId }
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("pending_champions_card")
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Public, contentDescription = null, tint = InfoSky, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "UEFA CHAMPIONS LEAGUE • $subtitle",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = InfoSky,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            if (uclHome != null && uclAway != null) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "${uclHome.name} x ${uclAway.name}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = { onPlayChampionsMatch(pendingUcl) },
+                                colors = ButtonDefaults.buttonColors(containerColor = InfoSky, contentColor = PitchEmerald950),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("play_champions_match_button")
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("JOGAR CHAMPIONS LEAGUE", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Pending Continental (Libertadores / Sul-Americana) Match Card
+            val pendingCont = uiState.pendingContinentalMatch
+            if (pendingCont != null) {
+                item {
+                    val (title, homeId, awayId, subtitle) = when (pendingCont) {
+                        is ContinentalGroupEngine.PendingContinentalMatch.GroupMatch ->
+                            listOf(
+                                pendingCont.tournament.cupType.title.uppercase(),
+                                pendingCont.fixture.homeClubId,
+                                pendingCont.fixture.awayClubId,
+                                "GRUPO ${pendingCont.fixture.groupName} • JOGO ${pendingCont.fixture.matchday}/6"
+                            )
+                        is ContinentalGroupEngine.PendingContinentalMatch.KnockoutMatch ->
+                            listOf(
+                                pendingCont.tournament.cupType.title.uppercase(),
+                                pendingCont.tie.homeClubId,
+                                pendingCont.tie.awayClubId,
+                                pendingCont.tie.stageLabel.uppercase()
+                            )
+                    }
+                    val contHome = uiState.clubs.firstOrNull { it.id == homeId }
+                    val contAway = uiState.clubs.firstOrNull { it.id == awayId }
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("pending_continental_card")
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.EmojiEvents, contentDescription = null, tint = BrazilGold500, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "$title • $subtitle",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = BrazilGold500,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            if (contHome != null && contAway != null) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "${contHome.name} x ${contAway.name}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = { onPlayContinentalMatch(pendingCont) },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrazilGold500, contentColor = PitchEmerald950),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("play_continental_match_button")
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("JOGAR $title", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -421,35 +627,137 @@ fun DashboardScreen(
                 }
             }
 
-            // Board Confidence
+            // Board Confidence, Council Evaluation, Presidential Elections & FFP
             item {
+                val gov = uiState.governance
+                val ffp = uiState.fairPlay
+                val ffpColor = when (ffp.compliance) {
+                    FfpComplianceLevel.COMPLIANT -> PitchGreen500
+                    FfpComplianceLevel.WARNING -> WarningAmber
+                    FfpComplianceLevel.BREACH -> AlertRed
+                }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("governance_board_card")
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Gavel, contentDescription = null, tint = BrazilGold500, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Presidência & Conselho", style = MaterialTheme.typography.titleMedium)
+                            }
+                            Surface(color = ffpColor.copy(alpha = 0.16f), shape = RoundedCornerShape(8.dp)) {
+                                Text(
+                                    text = ffp.compliance.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ffpColor,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "Presidente: ${gov.presidentName} (${gov.presidentStyle}) • Próx. eleição: ${gov.nextElectionYear}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Meta do Estatuto: ${gov.seasonObjectiveLabel} • Atual: ${career.leaguePosition}º lugar",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Confiança da Diretoria", style = MaterialTheme.typography.titleMedium)
+                            Text("Avaliação do Conselho", style = MaterialTheme.typography.labelMedium)
                             Text(
-                                text = "${career.boardConfidence}%",
+                                text = "${gov.councilRating}/100 • Diretoria ${career.boardConfidence}%",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = if (career.boardConfidence >= 50) PitchGreen500 else AlertRed
+                                color = if (gov.councilRating >= 55) PitchGreen500 else AlertRed
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
                         LinearProgressIndicator(
-                            progress = { career.boardConfidence / 100f },
-                            color = if (career.boardConfidence >= 50) PitchGreen500 else AlertRed,
+                            progress = { gov.councilRating / 100f },
+                            color = if (gov.councilRating >= 55) PitchGreen500 else AlertRed,
                             trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(8.dp)
                                 .clip(RoundedCornerShape(4.dp))
                         )
+                        Text(
+                            text = gov.councilVerdict,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        ffp.activePunishmentNote?.let { note ->
+                            Surface(
+                                color = AlertRed.copy(alpha = 0.16f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "⚖️ $note",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = AlertRed,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                        }
+
+                        gov.lastElectionSummary?.let { summary ->
+                            Text(
+                                text = summary,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = BrazilGold500
+                            )
+                        }
+
+                        if (gov.electionPending) {
+                            Button(
+                                onClick = { showElectionDialog = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = BrazilGold500,
+                                    contentColor = PitchEmerald950
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("open_election_dialog_button")
+                            ) {
+                                Icon(Icons.Default.HowToVote, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("ELEIÇÕES ABERTAS (${career.seasonYear}) • VOTAR AGORA", fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { showElectionDialog = true },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("open_election_dialog_button")
+                            ) {
+                                Icon(Icons.Default.HowToVote, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Eleição a cada 4 anos • Próx. em ${gov.nextElectionYear}",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -734,6 +1042,77 @@ fun DashboardScreen(
             dismissButton = {
                 TextButton(onClick = onExitCareer) {
                     Text("Voltar às Carreiras")
+                }
+            }
+        )
+    }
+
+    if (showElectionDialog) {
+        val gov = uiState.governance
+        val candidates = gov.electionCandidates
+        val canVoteNow = gov.electionPending || career.seasonYear >= gov.nextElectionYear
+        AlertDialog(
+            onDismissRequest = { showElectionDialog = false },
+            icon = { Icon(Icons.Default.HowToVote, contentDescription = null, tint = BrazilGold500) },
+            title = { Text("Eleição para Presidente (Ciclo 4 Anos)") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = if (canVoteNow) {
+                            "Urnas abertas na temporada ${career.seasonYear}! Escolha a chapa apoiada no Conselho para o próximo mandato de 4 anos."
+                        } else {
+                            "Mandato vigente de ${gov.presidentName}. As eleições presidenciais ocorrem apenas a cada 4 anos (próxima em ${gov.nextElectionYear})."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (canVoteNow) BrazilGold500 else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    candidates.forEach { cand ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(cand.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text("${cand.projectedVoteShare}%", style = MaterialTheme.typography.labelSmall, color = BrazilGold500)
+                                }
+                                Text(cand.platform, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = "Perfil: ${cand.styleLabel} • Aporte imediato: +${formatCurrency(cand.budgetGrant)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = PitchGreen500
+                                )
+                                Button(
+                                    onClick = {
+                                        onVotePresidentialElection(cand.id)
+                                        showElectionDialog = false
+                                    },
+                                    enabled = canVoteNow,
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrazilGold500, contentColor = PitchEmerald950),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp)
+                                        .testTag("vote_candidate_${cand.id}")
+                                ) {
+                                    Text(
+                                        text = if (canVoteNow) "Eleger ${cand.name.substringBefore(" (")}" else "Urnas fechadas até ${gov.nextElectionYear}",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showElectionDialog = false }) {
+                    Text("Fechar")
                 }
             }
         )

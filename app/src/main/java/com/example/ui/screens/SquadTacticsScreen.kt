@@ -24,6 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Healing
+import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -32,10 +35,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -55,7 +60,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.engine.CupAndCareerEngine
 import com.example.domain.model.Formation
+import com.example.domain.model.InjurySeverity
 import com.example.domain.model.MarkingStyle
+import com.example.domain.model.MedicalTreatmentType
 import com.example.domain.model.Mentality
 import com.example.domain.model.Player
 import com.example.domain.model.YouthProspect
@@ -78,10 +85,14 @@ fun SquadTacticsScreen(
     onUpdateTactics: (Formation, Mentality, MarkingStyle) -> Unit,
     onToggleForSale: (String) -> Unit,
     onPromoteYouth: (String) -> Unit = {},
-    onRenewContract: (String) -> Unit = {}
+    onRenewContract: (String) -> Unit = {},
+    onTreatInjury: (String, MedicalTreatmentType) -> Unit = { _, _ -> }
 ) {
     val club = uiState.userClub ?: return
     var subTab by remember { mutableIntStateOf(0) }
+    val injuredPlayers = remember(club.players) {
+        club.players.filter { it.injuredRounds > 0 }.sortedByDescending { it.injuredRounds }
+    }
 
     val starters = remember(club.players) {
         club.players.filter { it.isStarter }.sortedBy { it.position.sectorOrder }
@@ -147,6 +158,12 @@ fun SquadTacticsScreen(
                     selected = subTab == 2,
                     onClick = { subTab = 2 },
                     text = { Text("Base (${uiState.youthProspects.size})") }
+                )
+                Tab(
+                    selected = subTab == 3,
+                    onClick = { subTab = 3 },
+                    text = { Text("DM (${injuredPlayers.size})") },
+                    modifier = Modifier.testTag("tab_dm")
                 )
             }
 
@@ -261,7 +278,7 @@ fun SquadTacticsScreen(
                         )
                     }
                 }
-            } else {
+            } else if (subTab == 2) {
                 LazyColumn(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -306,10 +323,228 @@ fun SquadTacticsScreen(
                         }
                     }
                 }
+            } else {
+                // Medical Department Tab (Departamento Médico)
+                val fatiguedPlayers = remember(club.players) {
+                    club.players.filter { it.injuredRounds == 0 && it.energy < 70 }.sortedBy { it.energy }
+                }
+                val playersWithHistory = remember(club.players) {
+                    club.players.filter { it.injuryHistory.isNotEmpty() }.sortedByDescending { it.injuryHistory.size }
+                }
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.testTag("dm_list")
+                ) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.LocalHospital, contentDescription = null, tint = AlertRed, modifier = Modifier.size(26.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Departamento Médico (DM)", style = MaterialTheme.typography.titleMedium, color = BrazilGold500, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "${injuredPlayers.size} lesionado(s) • ${fatigadosLabel(fatiguedPlayers.size)} • Gerencie tratamentos e histórico clínico.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Text(
+                            text = "ATLETAS NO DM (${injuredPlayers.size})",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (injuredPlayers.isEmpty()) PitchGreen500 else AlertRed
+                        )
+                    }
+
+                    if (injuredPlayers.isEmpty()) {
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Healing, contentDescription = null, tint = PitchGreen500)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Departamento médico vazio! Todos os jogadores do elenco estão aptos para atuar.",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        items(injuredPlayers, key = { it.id }) { player ->
+                            val sevColor = when (player.currentInjurySeverity) {
+                                InjurySeverity.GRAVE -> AlertRed
+                                InjurySeverity.MODERADA -> WarningAmber
+                                else -> InfoSky
+                            }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth().testTag("dm_injured_${player.id}")
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("${player.name} (${player.position.code} • OVR ${player.overall})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                text = player.currentInjuryName ?: "Contusão muscular",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = sevColor
+                                            )
+                                        }
+                                        Surface(color = sevColor.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp)) {
+                                            Text(
+                                                text = player.currentInjurySeverity?.label ?: "Lesão",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = sevColor,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                    val est = player.injuryEstimatedRounds.coerceAtLeast(player.injuredRounds)
+                                    Text(
+                                        text = "Tempo estimado de recuperação: Restam ${player.injuredRounds} de $est rodada(s)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    LinearProgressIndicator(
+                                        progress = { ((est - player.injuredRounds).toFloat() / est.coerceAtLeast(1).toFloat()).coerceIn(0.08f, 1f) },
+                                        color = PitchGreen500,
+                                        trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(4.dp))
+                                    )
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        MedicalTreatmentType.entries.filter { it.roundsReduced > 0 }.forEach { treatment ->
+                                            OutlinedButton(
+                                                onClick = { onTreatInjury(player.id, treatment) },
+                                                enabled = !player.injuryTreatedThisInjury && club.budget >= treatment.costReais,
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.testTag("treat_${treatment.name.lowercase()}_${player.id}")
+                                            ) {
+                                                Icon(Icons.Default.MedicalServices, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("${treatment.label} (-${treatment.roundsReduced}r • ${formatCurrency(treatment.costReais)})")
+                                            }
+                                        }
+                                    }
+                                    if (player.injuryTreatedThisInjury) {
+                                        Text(
+                                            text = "Tratamento intensivo já aplicado nesta lesão.",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = PitchGreen500
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (fatiguedPlayers.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "ALERTA DE DESGASTE FÍSICO (${fatiguedPlayers.size})",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = WarningAmber
+                            )
+                        }
+                        items(fatiguedPlayers.take(6), key = { "fat_${it.id}" }) { p ->
+                            Surface(
+                                color = WarningAmber.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("${p.name} (${p.position.code})", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text("Energia ${p.energy}% • Risco de lesão", style = MaterialTheme.typography.labelMedium, color = WarningAmber)
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "HISTÓRICO DE CONTUSÕES DO ELENCO",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = InfoSky
+                        )
+                    }
+                    if (playersWithHistory.isEmpty()) {
+                        item {
+                            Text(
+                                text = "Nenhuma contusão registrada até o momento nesta carreira.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        items(playersWithHistory, key = { "hist_${it.id}" }) { p ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("${p.name} (${p.position.code}) • ${p.injuryHistory.size} ocorrência(s)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                    p.injuryHistory.take(5).forEachIndexed { idx, rec ->
+                                        if (idx > 0) HorizontalDivider()
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(rec.injuryName, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                                Text(
+                                                    text = "Temp. ${rec.seasonYear} • Rod. ${rec.roundOccurred} • ${rec.severity.label}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Text(
+                                                text = if (rec.recoveredRound != null) "Alta rod. ${rec.recoveredRound}" else "Restam ${rec.remainingRounds}r",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (rec.recoveredRound != null) PitchGreen500 else AlertRed
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+private fun fatigadosLabel(count: Int): String = if (count == 1) "1 em risco de fadiga" else "$count em risco de fadiga"
 
 @Composable
 private fun PlayerRosterCard(
@@ -362,6 +597,12 @@ private fun PlayerRosterCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (player.injuredRounds > 0) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(color = AlertRed.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                            Text("DM ${player.injuredRounds}r", color = AlertRed, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 4.dp))
+                        }
+                    }
                     if (player.suspendedRounds > 0) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(color = AlertRed.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {

@@ -107,8 +107,23 @@ class LocalCareerRepositoryTest {
         val userClub = allClubs.first()
         val fixtures = SeasonEngine.generateAllFixtures(allClubs)
         val cups = CupAndCareerEngine.buildInitialCups(userClub, allClubs)
+        val ucl = com.example.domain.engine.ChampionsLeagueEngine.buildInitialChampionsLeague(userClub, allClubs)
+        val continental = com.example.domain.engine.ContinentalGroupEngine.buildInitialContinentalTournaments(userClub, allClubs)
+        val awardsRecord = com.example.domain.engine.BallonDorEngine.computeAnnualAwards(
+            clubs = allClubs,
+            championsLeague = ucl,
+            seasonYear = 2026L,
+            userClub = userClub,
+            managerName = "Abel Ferreira"
+        )
         val sponsor = CupAndCareerEngine.availableSponsorsForClub(userClub).first()
         val youth = CupAndCareerEngine.generateYouthIntake(userClub, TrainingFocus.BASE)
+        val ffp = com.example.domain.model.FairPlayState(
+            compliance = com.example.domain.model.FfpComplianceLevel.WARNING,
+            transferBanRounds = 2,
+            pointsDeducted = 3
+        )
+        val gov = com.example.domain.engine.GovernanceAndFfpEngine.buildInitialGovernance(userClub)
 
         val careerId = repo.createCareer(
             CareerSave(
@@ -137,7 +152,14 @@ class LocalCareerRepositoryTest {
             activeSponsor = sponsor,
             youthProspects = youth,
             pendingJobOffers = emptyList(),
-            isSacked = false
+            isSacked = false,
+            championsLeague = ucl,
+            annualAwardsHistory = listOf(awardsRecord),
+            continentalTournaments = continental,
+            fairPlay = ffp,
+            governance = gov,
+            userBallonDorPlayerId = userClub.players.first().id,
+            userBallonDorVoteSeason = 2026L
         )
 
         repo.saveSeasonSnapshot(careerId, snapshot).getOrThrow()
@@ -150,6 +172,12 @@ class LocalCareerRepositoryTest {
         assertEquals(cups.size, loaded.cups.size)
         assertEquals(sponsor.id, loaded.activeSponsor?.id)
         assertEquals(youth.size, loaded.youthProspects.size)
+        assertEquals(36, loaded.championsLeague?.standings?.size)
+        assertEquals(continental.size, loaded.continentalTournaments.size)
+        assertEquals(1, loaded.annualAwardsHistory.size)
+        assertEquals(2, loaded.fairPlay.transferBanRounds)
+        assertEquals(gov.presidentName, loaded.governance.presidentName)
+        assertEquals(2026L, loaded.userBallonDorVoteSeason)
 
         repo.deleteCareer(careerId).getOrThrow()
         assertNull(repo.loadSeasonSnapshot(careerId))

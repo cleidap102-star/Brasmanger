@@ -30,13 +30,17 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -103,6 +107,19 @@ private fun BrasManagerApp() {
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.saveCurrentCareerNow(silent = true)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(uiState.snackMessage, uiState.errorMessage) {
         val msg = uiState.snackMessage ?: uiState.errorMessage
@@ -266,6 +283,8 @@ private fun BrasManagerApp() {
                         uiState = uiState,
                         onPlayRound = viewModel::startLiveMatch,
                         onPlayCupMatch = viewModel::startCupMatch,
+                        onPlayChampionsMatch = viewModel::startChampionsLeagueMatch,
+                        onPlayContinentalMatch = viewModel::startContinentalMatch,
                         onStartNextSeason = viewModel::startNextSeason,
                         onTicketPriceChange = viewModel::setTicketPriceLevel,
                         onTrainingChange = viewModel::setTrainingFocus,
@@ -275,6 +294,8 @@ private fun BrasManagerApp() {
                         onRejectOffer = viewModel::rejectIncomingOffer,
                         onAcceptJobOffer = viewModel::acceptJobOffer,
                         onTakeEmergencyRehire = viewModel::takeEmergencyRehire,
+                        onSaveCareer = { viewModel.saveCurrentCareerNow(silent = false) },
+                        onVotePresidentialElection = viewModel::votePresidentialElection,
                         onOpenFinances = {
                             navController.navigate(ROUTE_FINANCES) {
                                 launchSingleTop = true
@@ -301,11 +322,15 @@ private fun BrasManagerApp() {
                         onUpdateTactics = viewModel::updateTactics,
                         onToggleForSale = viewModel::togglePlayerForSale,
                         onPromoteYouth = viewModel::promoteYouthProspect,
-                        onRenewContract = viewModel::renewPlayerContract
+                        onRenewContract = viewModel::renewPlayerContract,
+                        onTreatInjury = viewModel::treatInjuredPlayer
                     )
                 }
                 composable(ROUTE_TABLE) {
-                    TableCalendarScreen(uiState = uiState)
+                    TableCalendarScreen(
+                        uiState = uiState,
+                        onVoteBallonDor = viewModel::voteBallonDor
+                    )
                 }
                 composable(ROUTE_NEWS) {
                     NewsFeedScreen(uiState = uiState)

@@ -22,13 +22,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.HowToVote
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,12 +53,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.domain.engine.ChampionsLeagueEngine
+import com.example.domain.engine.ContinentalGroupEngine
 import com.example.domain.engine.SeasonEngine
+import com.example.domain.model.AnnualAwardsRecord
+import com.example.domain.model.ChampionsLeaguePhase
+import com.example.domain.model.ChampionsLeagueState
+import com.example.domain.model.ContinentalPhase
+import com.example.domain.model.ContinentalTournamentState
 import com.example.domain.model.CupCompetitionState
+import com.example.domain.model.CupMatchTie
 import com.example.domain.model.Division
 import com.example.ui.components.ClubBadge
+import com.example.ui.theme.AlertRed
 import com.example.ui.theme.BrazilGold500
 import com.example.ui.theme.InfoSky
+import com.example.ui.theme.PitchEmerald950
 import com.example.ui.theme.PitchGreen500
 import com.example.ui.theme.ZoneLibertadores
 import com.example.ui.theme.ZoneRebaixamento
@@ -60,7 +78,8 @@ import com.example.ui.viewmodel.BrasManagerUiState
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TableCalendarScreen(
-    uiState: BrasManagerUiState
+    uiState: BrasManagerUiState,
+    onVoteBallonDor: (String, String) -> Unit = { _, _ -> }
 ) {
     val career = uiState.activeCareer ?: return
     val userClub = uiState.userClub ?: return
@@ -105,11 +124,28 @@ fun TableCalendarScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
 
-            TabRow(selectedTabIndex = selectedTab) {
+            ScrollableTabRow(
+                selectedTabIndex = selectedTab,
+                edgePadding = 12.dp
+            ) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Tabela") })
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Destaques") })
                 Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Rodada $currentRound") })
-                Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, text = { Text("Copas (${uiState.cups.size})") })
+                Tab(
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    text = {
+                        val totalCups = uiState.cups.size + uiState.continentalTournaments.size + if (uiState.championsLeague != null) 1 else 0
+                        Text("Copas ($totalCups)")
+                    },
+                    modifier = Modifier.testTag("tab_cups")
+                )
+                Tab(
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 },
+                    text = { Text("Bola de Ouro") },
+                    modifier = Modifier.testTag("tab_ballon_dor")
+                )
             }
 
             when (selectedTab) {
@@ -353,12 +389,42 @@ fun TableCalendarScreen(
                         }
                     }
                 }
-                else -> {
+                3 -> {
                     LazyColumn(
                         contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        if (uiState.cups.isEmpty()) {
+                        uiState.championsLeague?.let { ucl ->
+                            item(key = "ucl_league_phase") {
+                                ChampionsLeagueSectionCard(
+                                    ucl = ucl,
+                                    clubMap = clubMap,
+                                    userClubId = userClub.id
+                                )
+                            }
+                        }
+
+                        if (uiState.continentalTournaments.isNotEmpty()) {
+                            items(uiState.continentalTournaments, key = { "cont_${it.cupType.name}" }) { cont ->
+                                ContinentalTournamentCard(
+                                    tournament = cont,
+                                    clubMap = clubMap,
+                                    userClubId = userClub.id
+                                )
+                            }
+                        }
+
+                        if (uiState.cups.isNotEmpty()) {
+                            items(uiState.cups, key = { it.cupType.name }) { cup ->
+                                CupBracketCard(
+                                    cup = cup,
+                                    clubMap = clubMap,
+                                    userClubId = userClub.id
+                                )
+                            }
+                        }
+
+                        if (uiState.championsLeague == null && uiState.continentalTournaments.isEmpty() && uiState.cups.isEmpty()) {
                             item {
                                 Text(
                                     text = "Nenhuma copa em disputa no momento.",
@@ -366,13 +432,169 @@ fun TableCalendarScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                        } else {
-                            items(uiState.cups, key = { it.cupType.name }) { cup ->
-                                CupBracketCard(
-                                    cup = cup,
-                                    clubMap = clubMap,
-                                    userClubId = userClub.id
+                        }
+                    }
+                }
+                else -> {
+                    val hasVotedThisSeason = uiState.userBallonDorVoteSeason == career.seasonYear && !uiState.userBallonDorPlayerId.isNullOrBlank()
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("ballon_dor_election_card")
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.EmojiEvents, contentDescription = null, tint = BrazilGold500, modifier = Modifier.size(20.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "ELEIÇÃO BOLA DE OURO ${career.seasonYear}",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = BrazilGold500,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        if (hasVotedThisSeason) {
+                                            Surface(color = PitchGreen500.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp)) {
+                                                Text(
+                                                    text = "Voto Computado ✓",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = PitchGreen500,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = "Corrida ao prêmio de Melhor do Mundo. Vote no seu favorito para impulsionar (+22 pts) a eleição oficial do fim da temporada.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        if (uiState.ballonDorContenders.isEmpty()) {
+                            item {
+                                Text(
+                                    text = "A lista de finalistas será preenchida assim que as primeiras rodadas forem disputadas.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                            }
+                        } else {
+                            itemsIndexed(uiState.ballonDorContenders, key = { _, c -> c.playerId }) { index, cand ->
+                                val club = clubMap[cand.clubId]
+                                val isVotedByUser = hasVotedThisSeason && uiState.userBallonDorPlayerId == cand.playerId
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isVotedByUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${index + 1}º",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = if (index < 3) BrazilGold500 else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.width(30.dp)
+                                        )
+                                        if (club != null) {
+                                            ClubBadge(club.shortName, club.primaryColorHex, club.secondaryColorHex, club.crestUrl, size = 28.dp)
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "${cand.playerName} (${cand.position.code})",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "${cand.clubShortName} (${cand.divisionLabel}) • OVR ${cand.overall} • ${cand.goals}G ${cand.assists}A",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "${cand.score} pts na corrida",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = InfoSky
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        if (isVotedByUser) {
+                                            Button(
+                                                onClick = { onVoteBallonDor(cand.playerId, cand.playerName) },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = PitchGreen500,
+                                                    contentColor = PitchEmerald950
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                modifier = Modifier.testTag("vote_ballon_${cand.playerId}")
+                                            ) {
+                                                Icon(Icons.Default.HowToVote, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Votado ✓", fontWeight = FontWeight.Bold)
+                                            }
+                                        } else {
+                                            OutlinedButton(
+                                                onClick = { onVoteBallonDor(cand.playerId, cand.playerName) },
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                modifier = Modifier.testTag("vote_ballon_${cand.playerId}")
+                                            ) {
+                                                Text("Votar")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "HALL DA FAMA • PREMIADOS DE FIM DE ANO",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = BrazilGold500,
+                                modifier = Modifier.testTag("annual_awards_history_section")
+                            )
+                        }
+
+                        if (uiState.annualAwardsHistory.isEmpty()) {
+                            item {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "Conclua uma temporada para eternizar aqui o vencedor da Bola de Ouro, Artilheiro, Garçom, Luva de Ouro, Revelação Sub-21, Técnico do Ano e a Seleção da Época!",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(14.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            items(uiState.annualAwardsHistory, key = { "awards_${it.seasonYear}" }) { record ->
+                                AnnualAwardsHistoryCard(record = record)
                             }
                         }
                     }
@@ -452,6 +674,400 @@ private fun CupBracketCard(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = PitchGreen500,
                                 modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChampionsLeagueSectionCard(
+    ucl: ChampionsLeagueState,
+    clubMap: Map<String, com.example.domain.model.Club>,
+    userClubId: String
+) {
+    var showMode by remember(ucl.phase) {
+        mutableIntStateOf(if (ucl.phase == ChampionsLeaguePhase.LEAGUE_PHASE || ucl.knockoutTies.isEmpty()) 0 else 1)
+    }
+    val sorted = remember(ucl.standings, clubMap) {
+        ChampionsLeagueEngine.sortStandings(ucl.standings, clubMap)
+    }
+    val champion = ucl.championClubId?.let { clubMap[it] }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ucl_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Public, contentDescription = null, tint = InfoSky, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("UEFA Champions League", style = MaterialTheme.typography.titleLarge, color = BrazilGold500)
+                }
+                Surface(color = InfoSky.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp)) {
+                    Text(
+                        text = if (champion != null) "Campeão: ${champion.shortName}" else ucl.phase.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = InfoSky,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = showMode == 0,
+                    onClick = { showMode = 0 },
+                    label = { Text("Fase de Liga (${sorted.size}) • J${ucl.currentMatchday}/8") },
+                    modifier = Modifier.testTag("ucl_league_tab_chip")
+                )
+                if (ucl.knockoutTies.isNotEmpty()) {
+                    FilterChip(
+                        selected = showMode == 1,
+                        onClick = { showMode = 1 },
+                        label = { Text("Mata-Mata") },
+                        modifier = Modifier.testTag("ucl_knockout_tab_chip")
+                    )
+                }
+            }
+
+            if (showMode == 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("#", style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(26.dp))
+                    Text("Clube (Top 8 Oitavas • 9-24 Playoffs)", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                    Text("P", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, modifier = Modifier.width(26.dp))
+                    Text("J", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, modifier = Modifier.width(24.dp))
+                    Text("SG", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, modifier = Modifier.width(30.dp))
+                }
+                sorted.forEachIndexed { idx, st ->
+                    val pos = idx + 1
+                    val club = clubMap[st.clubId]
+                    val isUser = st.clubId == userClubId
+                    val zoneColor = when {
+                        pos <= 8 -> PitchGreen500
+                        pos <= 24 -> InfoSky
+                        else -> AlertRed
+                    }
+                    Surface(
+                        color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(4.dp)
+                                    .height(18.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(zoneColor)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("$pos", style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(22.dp))
+                            if (club != null) {
+                                ClubBadge(club.shortName, club.primaryColorHex, club.secondaryColorHex, club.crestUrl, size = 20.dp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = club?.name ?: st.clubId,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = if (isUser) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text("${st.points}", style = MaterialTheme.typography.labelMedium, color = BrazilGold500, textAlign = TextAlign.End, modifier = Modifier.width(26.dp))
+                            Text("${st.played}", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, modifier = Modifier.width(24.dp))
+                            Text(
+                                text = if (st.goalDifference > 0) "+${st.goalDifference}" else "${st.goalDifference}",
+                                style = MaterialTheme.typography.labelSmall,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.width(30.dp)
+                            )
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ZoneLegend("1º–8º Direto", PitchGreen500)
+                    ZoneLegend("9º–24º Playoffs", InfoSky)
+                    ZoneLegend("25º–36º Eliminado", AlertRed)
+                }
+            } else {
+                val stageTies = if (ucl.phase == ChampionsLeaguePhase.FINISHED) {
+                    val maxS = ucl.knockoutTies.maxOfOrNull { it.stageIndex } ?: 0
+                    ucl.knockoutTies.filter { it.stageIndex == maxS }
+                } else {
+                    ucl.knockoutTies.filter { it.stageIndex == ucl.currentKnockoutStageIndex }
+                }
+                stageTies.forEach { tie ->
+                    CupTieRowCard(tie = tie, clubMap = clubMap, userClubId = userClubId)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinentalTournamentCard(
+    tournament: ContinentalTournamentState,
+    clubMap: Map<String, com.example.domain.model.Club>,
+    userClubId: String
+) {
+    val groupNames = remember(tournament.standings) {
+        tournament.standings.map { it.groupName }.distinct().sorted()
+    }
+    val userGroup = remember(tournament.standings, userClubId) {
+        tournament.standings.firstOrNull { it.clubId == userClubId }?.groupName
+    }
+    var selectedGroup by remember(tournament.cupType, userGroup) {
+        mutableStateOf(userGroup ?: groupNames.firstOrNull() ?: "A")
+    }
+    var showKnockout by remember(tournament.phase) {
+        mutableStateOf(tournament.phase != ContinentalPhase.GROUP_STAGE && tournament.knockoutTies.isNotEmpty())
+    }
+    val champion = tournament.championClubId?.let { clubMap[it] }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("continental_card_${tournament.cupType.name.lowercase()}")
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(tournament.cupType.title, style = MaterialTheme.typography.titleLarge, color = BrazilGold500, modifier = Modifier.weight(1f))
+                Surface(color = PitchGreen500.copy(alpha = 0.18f), shape = RoundedCornerShape(8.dp)) {
+                    Text(
+                        text = if (champion != null) "Campeão: ${champion.shortName}" else tournament.phase.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PitchGreen500,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            if (tournament.knockoutTies.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !showKnockout,
+                        onClick = { showKnockout = false },
+                        label = { Text("Grupos A–H • J${tournament.currentMatchday}/6") }
+                    )
+                    FilterChip(
+                        selected = showKnockout,
+                        onClick = { showKnockout = true },
+                        label = { Text("Mata-Mata") }
+                    )
+                }
+            }
+
+            if (!showKnockout) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(groupNames) { gName ->
+                        val isUserGrp = gName == userGroup
+                        FilterChip(
+                            selected = selectedGroup == gName,
+                            onClick = { selectedGroup = gName },
+                            label = { Text(if (isUserGrp) "Grupo $gName ★" else "Grupo $gName") }
+                        )
+                    }
+                }
+                val groupStandings = remember(tournament.standings, selectedGroup, clubMap) {
+                    ContinentalGroupEngine.sortGroupStandings(tournament.standings, selectedGroup, clubMap)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("#", style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(24.dp))
+                    Text("Grupo $selectedGroup (Top 2 Oitavas)", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                    Text("P", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, modifier = Modifier.width(26.dp))
+                    Text("J", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, modifier = Modifier.width(22.dp))
+                    Text("SG", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, modifier = Modifier.width(28.dp))
+                }
+                groupStandings.forEachIndexed { idx, st ->
+                    val pos = idx + 1
+                    val club = clubMap[st.clubId]
+                    val isUser = st.clubId == userClubId
+                    Surface(
+                        color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(4.dp)
+                                    .height(18.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(if (pos <= 2) ZoneLibertadores else Color.Transparent)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("$pos", style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(20.dp))
+                            if (club != null) {
+                                ClubBadge(club.shortName, club.primaryColorHex, club.secondaryColorHex, club.crestUrl, size = 20.dp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = club?.name ?: st.clubId,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = if (isUser) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text("${st.points}", style = MaterialTheme.typography.labelMedium, color = BrazilGold500, textAlign = TextAlign.End, modifier = Modifier.width(26.dp))
+                            Text("${st.played}", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End, modifier = Modifier.width(22.dp))
+                            Text(
+                                text = if (st.goalDifference > 0) "+${st.goalDifference}" else "${st.goalDifference}",
+                                style = MaterialTheme.typography.labelSmall,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.width(28.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                val displayTies = if (tournament.phase == ContinentalPhase.FINISHED) {
+                    val maxS = tournament.knockoutTies.maxOfOrNull { it.stageIndex } ?: 0
+                    tournament.knockoutTies.filter { it.stageIndex == maxS }
+                } else {
+                    tournament.knockoutTies.filter { it.stageIndex == tournament.currentKnockoutStageIndex }
+                }
+                displayTies.forEach { tie ->
+                    CupTieRowCard(tie = tie, clubMap = clubMap, userClubId = userClubId)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CupTieRowCard(
+    tie: CupMatchTie,
+    clubMap: Map<String, com.example.domain.model.Club>,
+    userClubId: String
+) {
+    val h = clubMap[tie.homeClubId]
+    val a = clubMap[tie.awayClubId]
+    val isUser = tie.homeClubId == userClubId || tie.awayClubId == userClubId
+    Surface(
+        color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(h?.shortName ?: tie.homeClubId, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(
+                    text = if (tie.homeScore != null && tie.awayScore != null) "${tie.homeScore} x ${tie.awayScore}" else "Rod. ${tie.triggerAfterLeagueRound}+",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = BrazilGold500
+                )
+                Text(
+                    text = a?.shortName ?: tie.awayClubId,
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            tie.shootout?.let { pen ->
+                Text(
+                    text = pen.summary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PitchGreen500,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AnnualAwardsHistoryCard(record: AnnualAwardsRecord) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "TEMPORADA ${record.seasonYear} • PREMIADOS",
+                style = MaterialTheme.typography.titleMedium,
+                color = BrazilGold500,
+                fontWeight = FontWeight.Bold
+            )
+            record.ballonDorTop3.forEachIndexed { idx, cand ->
+                val medal = when (idx) {
+                    0 -> "🥇 Bola de Ouro"
+                    1 -> "🥈 2º Lugar"
+                    else -> "🥉 3º Lugar"
+                }
+                Text(
+                    text = "$medal: ${cand.playerName} (${cand.clubShortName}) • ${cand.goals}G ${cand.assists}A • ${cand.score} pts",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal,
+                    color = if (idx == 0) BrazilGold500 else MaterialTheme.colorScheme.onSurface
+                )
+            }
+            record.goldenBoot?.let {
+                Text("⚽ Artilheiro: ${it.playerName} (${it.clubShortName}) — ${it.goals} gols", style = MaterialTheme.typography.bodySmall)
+            }
+            record.topPlaymaker?.let {
+                Text("🎯 Rei das Assistências: ${it.playerName} (${it.clubShortName}) — ${it.assists} assist.", style = MaterialTheme.typography.bodySmall)
+            }
+            record.bestGoalkeeper?.let {
+                Text("🧤 Luva de Ouro: ${it.playerName} (${it.clubShortName}) — OVR ${it.overall}", style = MaterialTheme.typography.bodySmall)
+            }
+            record.bestYoungPlayer?.let {
+                Text("🌟 Revelação Sub-21: ${it.playerName} (${it.clubShortName}, ${it.age} anos)", style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                text = "👔 Melhor Técnico: ${record.bestManagerName} (${record.bestManagerClubName})",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (record.teamOfTheYear.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("SELEÇÃO DA TEMPORADA", style = MaterialTheme.typography.labelSmall, color = PitchGreen500)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    record.teamOfTheYear.forEach { star ->
+                        Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(8.dp)) {
+                            Text(
+                                text = "${star.position.code} ${star.playerName} (${star.clubShortName})",
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }

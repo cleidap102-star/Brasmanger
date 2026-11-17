@@ -123,7 +123,8 @@ object NewsGenerator {
         allClubs: List<Club>,
         updatedFixtures: List<Fixture>,
         incomingOffers: List<IncomingTransferOffer>,
-        seasonSummary: String?
+        seasonSummary: String?,
+        transferWindowOpen: Boolean = true
     ): List<NewsItem> {
         val items = mutableListOf<NewsItem>()
         val clubMap = allClubs.associateBy { it.id }
@@ -249,8 +250,8 @@ object NewsGenerator {
             }
         }
 
-        // Simulated AI-club transfer buzz for the round
-        if (Random.nextDouble() < 0.85) {
+        // Simulated AI-club transfer buzz for the round (only completed transfers when window is open)
+        if (transferWindowOpen && Random.nextDouble() < 0.85) {
             val candidates = allClubs.filter { it.id != userClub.id && it.players.isNotEmpty() }.shuffled()
             if (candidates.size >= 2) {
                 val seller = candidates[0]

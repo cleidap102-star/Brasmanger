@@ -220,6 +220,30 @@ enum class TrainingFocus(val code: String, val label: String, val description: S
     }
 }
 
+enum class InjurySeverity(val label: String, val minRounds: Int, val maxRounds: Int) {
+    LEVE("Leve", 1, 2),
+    MODERADA("Moderada", 2, 4),
+    GRAVE("Grave", 4, 7)
+}
+
+enum class MedicalTreatmentType(val label: String, val description: String, val costReais: Long, val roundsReduced: Int) {
+    CONSERVADOR("Repouso Padrão", "Recuperação natural no DM sem custo extra", 0L, 0),
+    FISIOTERAPIA_INTENSIVA("Fisioterapia Intensiva", "Reduz 1 rodada do tempo estimado (-1 rod.)", 450_000L, 1),
+    TRATAMENTO_ESPECIALIZADO("Centro Médico Avançado", "Reduz 2 rodadas + recupera +15% energia", 950_000L, 2)
+}
+
+data class InjuryRecord(
+    val id: String,
+    val seasonYear: Long,
+    val roundOccurred: Int,
+    val injuryName: String,
+    val severity: InjurySeverity,
+    val estimatedRounds: Int,
+    val remainingRounds: Int,
+    val treatmentApplied: Boolean = false,
+    val recoveredRound: Int? = null
+)
+
 data class Player(
     val id: String,
     val name: String,
@@ -242,7 +266,12 @@ data class Player(
     val forSale: Boolean = false,
     val espnAthleteId: String? = null,
     val contractRounds: Int = 38,
-    val potential: Int = overall
+    val potential: Int = overall,
+    val currentInjuryName: String? = null,
+    val currentInjurySeverity: InjurySeverity? = null,
+    val injuryEstimatedRounds: Int = 0,
+    val injuryTreatedThisInjury: Boolean = false,
+    val injuryHistory: List<InjuryRecord> = emptyList()
 ) {
     val isAvailable: Boolean get() = suspendedRounds == 0 && injuredRounds == 0
     val effectiveOverall: Int
@@ -302,6 +331,7 @@ enum class CompetitionType(val label: String) {
     LIGA_ARGENTINA("Liga Argentina"),
     COPA_DO_BRASIL("Copa do Brasil"),
     LIBERTADORES("Copa Libertadores"),
+    COPA_SUL_AMERICANA("Copa Sul-Americana"),
     CHAMPIONS_LEAGUE("UEFA Champions League");
 
     companion object {
@@ -392,7 +422,10 @@ data class LiveMatchState(
     val cupTieId: String? = null,
     val cupStageLabel: String? = null,
     val penaltyShootout: PenaltyShootoutResult? = null,
-    val ballZone: Float = 0.5f
+    val ballZone: Float = 0.5f,
+    val championsFixtureId: String? = null,
+    val continentalFixtureId: String? = null,
+    val continentalCupType: ContinentalCupType? = null
 )
 
 data class IncomingTransferOffer(
@@ -566,6 +599,195 @@ data class SeasonAwardSummary(
     val managerOfTheYear: String
 )
 
+data class TransferWindowStatus(
+    val isOpen: Boolean,
+    val windowName: String,
+    val statusLabel: String,
+    val roundsRemaining: Int,
+    val openRangesText: String
+)
+
+enum class ChampionsLeaguePhase(val label: String) {
+    LEAGUE_PHASE("Fase de Liga (36 Clubes)"),
+    PLAYOFFS("Playoffs (9º–24º)"),
+    ROUND_OF_16("Oitavas de Final"),
+    QUARTER_FINALS("Quartas de Final"),
+    SEMI_FINALS("Semifinal"),
+    FINAL("Grande Final"),
+    FINISHED("Encerrada")
+}
+
+data class ChampionsLeagueStanding(
+    val clubId: String,
+    val played: Int = 0,
+    val wins: Int = 0,
+    val draws: Int = 0,
+    val losses: Int = 0,
+    val goalsFor: Int = 0,
+    val goalsAgainst: Int = 0,
+    val points: Int = 0,
+    val pot: Int = 1
+) {
+    val goalDifference: Int get() = goalsFor - goalsAgainst
+}
+
+data class ChampionsLeagueFixture(
+    val id: String,
+    val matchday: Int,
+    val homeClubId: String,
+    val awayClubId: String,
+    val homeScore: Int? = null,
+    val awayScore: Int? = null,
+    val played: Boolean = false,
+    val triggerAfterLeagueRound: Int
+)
+
+data class ChampionsLeagueState(
+    val phase: ChampionsLeaguePhase = ChampionsLeaguePhase.LEAGUE_PHASE,
+    val currentMatchday: Int = 1,
+    val standings: List<ChampionsLeagueStanding> = emptyList(),
+    val leagueFixtures: List<ChampionsLeagueFixture> = emptyList(),
+    val knockoutTies: List<CupMatchTie> = emptyList(),
+    val currentKnockoutStageIndex: Int = 0,
+    val championClubId: String? = null
+)
+
+data class BallonDorCandidate(
+    val playerId: String,
+    val playerName: String,
+    val position: PlayerPosition,
+    val clubId: String,
+    val clubName: String,
+    val clubShortName: String,
+    val divisionLabel: String,
+    val age: Int,
+    val overall: Int,
+    val goals: Int,
+    val assists: Int,
+    val score: Int
+)
+
+data class AnnualAwardsRecord(
+    val seasonYear: Long,
+    val ballonDorTop3: List<BallonDorCandidate>,
+    val goldenBoot: BallonDorCandidate?,
+    val topPlaymaker: BallonDorCandidate?,
+    val bestGoalkeeper: BallonDorCandidate?,
+    val bestYoungPlayer: BallonDorCandidate?,
+    val bestManagerName: String,
+    val bestManagerClubName: String,
+    val teamOfTheYear: List<BallonDorCandidate> = emptyList()
+)
+
+enum class ContinentalCupType(
+    val competition: CompetitionType,
+    val title: String,
+    val basePrizePerWin: Long,
+    val titlePrize: Long
+) {
+    LIBERTADORES(
+        competition = CompetitionType.LIBERTADORES,
+        title = "Copa Libertadores",
+        basePrizePerWin = 1_650_000L,
+        titlePrize = 22_000_000L
+    ),
+    SUL_AMERICANA(
+        competition = CompetitionType.COPA_SUL_AMERICANA,
+        title = "Copa Sul-Americana",
+        basePrizePerWin = 900_000L,
+        titlePrize = 11_000_000L
+    )
+}
+
+enum class ContinentalPhase(val label: String) {
+    GROUP_STAGE("Fase de Grupos (8 Grupos)"),
+    ROUND_OF_16("Oitavas de Final"),
+    QUARTER_FINALS("Quartas de Final"),
+    SEMI_FINALS("Semifinal"),
+    FINAL("Grande Final"),
+    FINISHED("Encerrada")
+}
+
+data class ContinentalGroupStanding(
+    val clubId: String,
+    val groupName: String, // "A".."H"
+    val played: Int = 0,
+    val wins: Int = 0,
+    val draws: Int = 0,
+    val losses: Int = 0,
+    val goalsFor: Int = 0,
+    val goalsAgainst: Int = 0,
+    val points: Int = 0
+) {
+    val goalDifference: Int get() = goalsFor - goalsAgainst
+}
+
+data class ContinentalGroupFixture(
+    val id: String,
+    val cupType: ContinentalCupType,
+    val groupName: String,
+    val matchday: Int, // 1..6
+    val homeClubId: String,
+    val awayClubId: String,
+    val homeScore: Int? = null,
+    val awayScore: Int? = null,
+    val played: Boolean = false,
+    val triggerAfterLeagueRound: Int
+)
+
+data class ContinentalTournamentState(
+    val cupType: ContinentalCupType,
+    val phase: ContinentalPhase = ContinentalPhase.GROUP_STAGE,
+    val currentMatchday: Int = 1,
+    val standings: List<ContinentalGroupStanding> = emptyList(),
+    val groupFixtures: List<ContinentalGroupFixture> = emptyList(),
+    val knockoutTies: List<CupMatchTie> = emptyList(),
+    val currentKnockoutStageIndex: Int = 0,
+    val championClubId: String? = null
+)
+
+enum class FfpComplianceLevel(val label: String) {
+    COMPLIANT("Regular (Aprovado)"),
+    WARNING("Alerta de Fair Play"),
+    BREACH("Violação FFP / FIFA")
+}
+
+data class FairPlayState(
+    val compliance: FfpComplianceLevel = FfpComplianceLevel.COMPLIANT,
+    val seasonNetResult: Long = 0L,
+    val wageToIncomeRatioPct: Int = 50,
+    val allowedDeficitLimit: Long = 15_000_000L,
+    val transferBanRounds: Int = 0,
+    val pointsDeducted: Int = 0,
+    val totalFinesPaid: Long = 0L,
+    val activePunishmentNote: String? = null
+)
+
+data class PresidentialCandidate(
+    val id: String,
+    val name: String,
+    val platform: String,
+    val styleLabel: String,
+    val budgetGrant: Long,
+    val boardStrictness: Int = 2,
+    val projectedVoteShare: Int = 34
+)
+
+data class ClubGovernanceState(
+    val presidentName: String = "Roberto Andrade",
+    val presidentStyle: String = "Equilibrado",
+    val councilRating: Int = 74,
+    val councilVerdict: String = "Gestão estável e alinhada às metas do estatuto",
+    val seasonObjectiveLabel: String = "Brigar pela parte de cima da tabela",
+    val seasonObjectiveMaxPos: Int = 8,
+    val objectiveFailedPunished: Boolean = false,
+    val electionPending: Boolean = false,
+    val nextElectionYear: Long = 2030L,
+    val lastElectionYear: Long? = null,
+    val electionCandidates: List<PresidentialCandidate> = emptyList(),
+    val lastElectionSummary: String? = null
+)
+
 data class SeasonSnapshot(
     val clubs: List<Club>,
     val fixtures: List<Fixture>,
@@ -575,6 +797,15 @@ data class SeasonSnapshot(
     val activeSponsor: SponsorDeal? = null,
     val youthProspects: List<YouthProspect> = emptyList(),
     val pendingJobOffers: List<ManagerJobOffer> = emptyList(),
-    val isSacked: Boolean = false
+    val isSacked: Boolean = false,
+    val championsLeague: ChampionsLeagueState? = null,
+    val annualAwardsHistory: List<AnnualAwardsRecord> = emptyList(),
+    val continentalTournaments: List<ContinentalTournamentState> = emptyList(),
+    val fairPlay: FairPlayState = FairPlayState(),
+    val governance: ClubGovernanceState = ClubGovernanceState(),
+    val userBallonDorPlayerId: String? = null,
+    val userBallonDorVoteSeason: Long = 0L
 )
+
+
 

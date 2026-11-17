@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AddBusiness
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ConfirmationNumber
+import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.Card
@@ -66,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.engine.FinanceEngine
+import com.example.domain.model.FfpComplianceLevel
 import com.example.domain.model.MonthlyFinancePoint
 import com.example.domain.model.SponsorDeal
 import com.example.domain.model.TicketPriceLevel
@@ -77,6 +79,7 @@ import com.example.ui.theme.InfoSky
 import com.example.ui.theme.PitchEmerald800
 import com.example.ui.theme.PitchEmerald950
 import com.example.ui.theme.PitchGreen500
+import com.example.ui.theme.WarningAmber
 import com.example.ui.viewmodel.BrasManagerUiState
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -367,6 +370,82 @@ fun FinancesScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    }
+                }
+            }
+
+            // Financial Fair Play (FIFA FFP) Card
+            item {
+                val ffp = uiState.fairPlay
+                val ffpColor = when (ffp.compliance) {
+                    FfpComplianceLevel.COMPLIANT -> PitchGreen500
+                    FfpComplianceLevel.WARNING -> WarningAmber
+                    FfpComplianceLevel.BREACH -> AlertRed
+                }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("finance_ffp_card")
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Gavel, contentDescription = null, tint = ffpColor, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Fair Play Financeiro (FIFA)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            Surface(color = ffpColor.copy(alpha = 0.18f), shape = RoundedCornerShape(50)) {
+                                Text(
+                                    text = ffp.compliance.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ffpColor,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            TooltipMetric(
+                                label = "Resultado Líq.",
+                                value = "${if (ffp.seasonNetResult >= 0) "+" else ""}${formatCurrency(ffp.seasonNetResult)}",
+                                color = if (ffp.seasonNetResult >= 0) PitchGreen500 else AlertRed
+                            )
+                            TooltipMetric(
+                                label = "Limite Déficit",
+                                value = "-${formatCurrency(ffp.allowedDeficitLimit)}",
+                                color = InfoSky
+                            )
+                            TooltipMetric(
+                                label = "Folha/Receita",
+                                value = "${ffp.wageToIncomeRatioPct}%",
+                                color = if (ffp.wageToIncomeRatioPct <= 85) PitchGreen500 else WarningAmber
+                            )
+                        }
+                        if (ffp.transferBanRounds > 0 || ffp.pointsDeducted > 0 || ffp.totalFinesPaid > 0L) {
+                            HorizontalDivider()
+                            Text(
+                                text = "Sanções FIFA: ${ffp.transferBanRounds} rod. Transfer Ban • -${ffp.pointsDeducted} pts • Multas ${formatCurrency(ffp.totalFinesPaid)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = AlertRed,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        ffp.activePunishmentNote?.let { note ->
+                            Surface(color = AlertRed.copy(alpha = 0.14f), shape = RoundedCornerShape(10.dp)) {
+                                Text(
+                                    text = note,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AlertRed,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
                         }
                     }
                 }

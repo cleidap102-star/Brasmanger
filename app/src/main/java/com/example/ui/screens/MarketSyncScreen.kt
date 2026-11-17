@@ -21,6 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -57,6 +60,7 @@ import com.example.domain.model.Player
 import com.example.domain.model.PlayerPosition
 import com.example.ui.components.formatCurrency
 import com.example.ui.components.formatTimestampPtBr
+import com.example.ui.theme.AlertRed
 import com.example.ui.theme.BrazilGold500
 import com.example.ui.theme.InfoSky
 import com.example.ui.theme.PitchEmerald950
@@ -143,10 +147,89 @@ fun MarketSyncScreen(
             }
 
             if (subTab == 0) {
+                val window = uiState.transferWindowStatus
+                val banRounds = uiState.fairPlay.transferBanRounds
+                val marketUnlocked = window.isOpen && banRounds <= 0
+
                 LazyColumn(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (window.isOpen) PitchGreen500.copy(alpha = 0.14f) else AlertRed.copy(alpha = 0.14f)
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("transfer_window_banner")
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (window.isOpen) Icons.Default.LockOpen else Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = if (window.isOpen) PitchGreen500 else AlertRed,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = window.windowName.uppercase(),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (window.isOpen) PitchGreen500 else AlertRed,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = window.statusLabel,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Calendário oficial de registros: ${window.openRangesText}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        if (banRounds > 0) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = AlertRed.copy(alpha = 0.18f)),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("fifa_transfer_ban_banner")
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Gavel, contentDescription = null, tint = AlertRed, modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "TRANSFER BAN FIFA • $banRounds RODADA(S)",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = AlertRed,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = uiState.fairPlay.activePunishmentNote
+                                                ?: "Contratações suspensas até o cumprimento da punição de Fair Play Financeiro.",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         OutlinedTextField(
                             value = search,
@@ -199,10 +282,18 @@ fun MarketSyncScreen(
                                     }
                                     Button(
                                         onClick = { onSignFreeAgent(player) },
+                                        enabled = marketUnlocked,
                                         colors = ButtonDefaults.buttonColors(containerColor = PitchGreen500, contentColor = PitchEmerald950),
                                         shape = RoundedCornerShape(10.dp)
                                     ) {
-                                        Text("Contratar", fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = when {
+                                                banRounds > 0 -> "Banido"
+                                                !window.isOpen -> "Fechada"
+                                                else -> "Contratar"
+                                            },
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
                             }
@@ -234,10 +325,18 @@ fun MarketSyncScreen(
                                     }
                                     Button(
                                         onClick = { negotiatingTarget = player to club },
+                                        enabled = marketUnlocked,
                                         colors = ButtonDefaults.buttonColors(containerColor = BrazilGold500, contentColor = PitchEmerald950),
                                         shape = RoundedCornerShape(10.dp)
                                     ) {
-                                        Text("Negociar", fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = when {
+                                                banRounds > 0 -> "Banido"
+                                                !window.isOpen -> "Fechada"
+                                                else -> "Negociar"
+                                            },
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
                             }
